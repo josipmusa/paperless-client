@@ -46,13 +46,6 @@ export default function RecordingScreen() {
     }
   }, [currentJob?.status]);
 
-export default function RecordingScreen() {
-  const [isRecording, setIsRecording] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
   const startRecording = async () => {
     try {
       const { status } = await Audio.requestPermissionsAsync();
