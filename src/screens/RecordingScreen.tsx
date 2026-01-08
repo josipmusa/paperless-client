@@ -103,6 +103,11 @@ export default function RecordingScreen() {
         return;
       }
 
+      await AudioModule.setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
+
       audioRecorder.record();
       setRecordingDuration(0);
 
