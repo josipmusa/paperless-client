@@ -94,10 +94,10 @@ export default function RecordingScreen() {
   const uploadRecording = async (uri: string) => {
     setIsUploading(true);
     try {
-      const result = await createInvoiceFromVoice(uri);
+      const jobId = await createInvoiceFromVoice(uri);
       Alert.alert(
         'Success',
-        `Recording uploaded! Job ID: ${result.id}\n\nYour invoice is being processed.`
+        `Recording uploaded! Job ID: ${jobId}\n\nYour invoice is being processed.`
       );
       setRecordingDuration(0);
     } catch (error: any) {

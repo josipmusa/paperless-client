@@ -1,10 +1,6 @@
 import apiClient from './axios';
 
-export interface InvoiceJobResponse {
-  id: string;
-}
-
-export const createInvoiceFromVoice = async (audioUri: string): Promise<InvoiceJobResponse> => {
+export const createInvoiceFromVoice = async (audioUri: string): Promise<string> => {
   const formData = new FormData();
   
   formData.append('file', {
@@ -13,7 +9,7 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<InvoiceJ
     name: 'recording.wav',
   } as any);
 
-  const response = await apiClient.post<InvoiceJobResponse>('/invoices', formData, {
+  const response = await apiClient.post<string>('/invoices', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
