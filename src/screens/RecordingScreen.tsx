@@ -121,6 +121,7 @@ export default function RecordingScreen() {
         playsInSilentMode: true,
       });
 
+      await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setRecordingState('recording');
       setRecordingDuration(0);
@@ -152,7 +153,6 @@ export default function RecordingScreen() {
         return;
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100));
       const uri = audioRecorder.uri;
 
       if (uri) {
