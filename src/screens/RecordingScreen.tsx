@@ -40,6 +40,7 @@ const recordingOptions: RecordingOptions = {
 };
 
 export default function RecordingScreen() {
+  const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -109,6 +110,7 @@ export default function RecordingScreen() {
       });
 
       audioRecorder.record();
+      setIsRecording(true);
       setRecordingDuration(0);
 
       intervalRef.current = setInterval(() => {
@@ -127,6 +129,7 @@ export default function RecordingScreen() {
         intervalRef.current = null;
       }
 
+      setIsRecording(false);
       await audioRecorder.stop();
       const uri = audioRecorder.uri;
 
@@ -202,7 +205,7 @@ export default function RecordingScreen() {
       <View style={styles.recordingArea}>
         <Text style={styles.duration}>{formatDuration(recordingDuration)}</Text>
         
-        {audioRecorder.isRecording && (
+        {isRecording && (
           <View style={styles.recordingIndicator}>
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>Recording...</Text>
@@ -244,15 +247,15 @@ export default function RecordingScreen() {
         <TouchableOpacity
           style={[
             styles.recordButton,
-            audioRecorder.isRecording && styles.recordButtonActive,
+            isRecording && styles.recordButtonActive,
           ]}
-          onPress={audioRecorder.isRecording ? stopRecording : startRecording}
+          onPress={isRecording ? stopRecording : startRecording}
           activeOpacity={0.7}
         >
           <View
             style={[
               styles.recordButtonInner,
-              audioRecorder.isRecording && styles.recordButtonInnerActive,
+              isRecording && styles.recordButtonInnerActive,
             ]}
           />
         </TouchableOpacity>
@@ -263,7 +266,7 @@ export default function RecordingScreen() {
           ? 'Your invoice is ready to view'
           : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
             ? 'Please wait while we process your recording'
-          : audioRecorder.isRecording
+          : isRecording
             ? 'Tap to stop recording'
             : 'Tap to start recording'}
       </Text>
