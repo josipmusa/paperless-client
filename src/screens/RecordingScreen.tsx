@@ -8,19 +8,26 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, RecordingOptions, AudioModule } from 'expo-audio';
 import { createInvoiceFromVoice, getInvoicePdfLink } from '../api/invoiceApi';
 import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
 import { JobStatus } from '../websocket/jobWebSocket';
 
+const recordingOptions: RecordingOptions = {
+  extension: '.wav',
+  sampleRate: 44100,
+  numberOfChannels: 1,
+  bitRate: 128000,
+};
+
 export default function RecordingScreen() {
-  const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const audioRecorder = useAudioRecorder(recordingOptions);
 
   const currentJob = useJobStore((state) => state.currentJob);
   const setCurrentJob = useJobStore((state) => state.setCurrentJob);
@@ -71,43 +78,13 @@ export default function RecordingScreen() {
 
   const startRecording = async () => {
     try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
         Alert.alert('Permission Denied', 'Microphone permission is required to record audio.');
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync({
-        android: {
-          extension: '.wav',
-          outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-          audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.wav',
-          audioQuality: Audio.IOSAudioQuality.HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: {
-          mimeType: 'audio/wav',
-        },
-      });
-
-      recordingRef.current = recording;
-      setIsRecording(true);
+      audioRecorder.record();
       setRecordingDuration(0);
 
       intervalRef.current = setInterval(() => {
@@ -120,19 +97,14 @@ export default function RecordingScreen() {
   };
 
   const stopRecording = async () => {
-    if (!recordingRef.current) return;
-
     try {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
 
-      setIsRecording(false);
-      await recordingRef.current.stopAndUnloadAsync();
-      
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
 
       if (uri) {
         await uploadRecording(uri);
@@ -206,7 +178,7 @@ export default function RecordingScreen() {
       <View style={styles.recordingArea}>
         <Text style={styles.duration}>{formatDuration(recordingDuration)}</Text>
         
-        {isRecording && (
+        {audioRecorder.isRecording && (
           <View style={styles.recordingIndicator}>
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>Recording...</Text>
@@ -248,15 +220,15 @@ export default function RecordingScreen() {
         <TouchableOpacity
           style={[
             styles.recordButton,
-            isRecording && styles.recordButtonActive,
+            audioRecorder.isRecording && styles.recordButtonActive,
           ]}
-          onPress={isRecording ? stopRecording : startRecording}
+          onPress={audioRecorder.isRecording ? stopRecording : startRecording}
           activeOpacity={0.7}
         >
           <View
             style={[
               styles.recordButtonInner,
-              isRecording && styles.recordButtonInnerActive,
+              audioRecorder.isRecording && styles.recordButtonInnerActive,
             ]}
           />
         </TouchableOpacity>
@@ -267,7 +239,7 @@ export default function RecordingScreen() {
           ? 'Your invoice is ready to view'
           : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
             ? 'Please wait while we process your recording'
-          : isRecording
+          : audioRecorder.isRecording
             ? 'Tap to stop recording'
             : 'Tap to start recording'}
       </Text>

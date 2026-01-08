@@ -16,7 +16,7 @@
     "@types/sockjs-client": "^1.5.4",
     "axios": "^1.13.2",
     "expo": "~54.0.31",
-    "expo-av": "^16.0.8",
+    "expo-audio": "^1.1.1",
     "expo-secure-store": "^15.0.8",
     "expo-status-bar": "~3.0.9",
     "nativewind": "^4.2.1",
