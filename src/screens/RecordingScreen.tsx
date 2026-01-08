@@ -121,7 +121,6 @@ export default function RecordingScreen() {
         playsInSilentMode: true,
       });
 
-      await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setRecordingState('recording');
       setRecordingDuration(0);
@@ -186,19 +185,23 @@ export default function RecordingScreen() {
   };
 
   const handlePressIn = async (event: any) => {
+    console.log('Press In - Current State:', recordingState);
     if (recordingState !== 'idle') return;
     touchStartX.current = event.nativeEvent.pageX;
+    console.log('Starting recording...');
     await startRecording();
   };
 
   const handlePressOut = () => {
+    console.log('Press Out - Current State:', recordingState, 'Is Cancelling:', isCancelling);
     if (recordingState === 'recording') {
       Animated.spring(slideX, {
         toValue: 0,
         useNativeDriver: true,
       }).start();
+      const wasCancelling = isCancelling;
       setIsCancelling(false);
-      stopRecording(isCancelling);
+      stopRecording(wasCancelling);
     }
   };
 
@@ -207,6 +210,8 @@ export default function RecordingScreen() {
     
     const currentX = event.nativeEvent.pageX;
     const deltaX = currentX - touchStartX.current;
+    
+    console.log('Touch Move - DeltaX:', deltaX, 'Threshold:', CANCEL_THRESHOLD);
     
     if (deltaX < 0) {
       const clampedDelta = Math.max(deltaX, CANCEL_THRESHOLD - 20);
@@ -234,6 +239,7 @@ export default function RecordingScreen() {
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               onTouchMove={handleTouchMove}
+              delayLongPress={0}
             >
               <Ionicons name="mic" size={24} color="#fff" style={{ marginRight: 8 }} />
               <Text style={styles.recordButtonText}>Hold to Record</Text>
@@ -271,6 +277,7 @@ export default function RecordingScreen() {
             <Pressable
               onPressOut={handlePressOut}
               onTouchMove={handleTouchMove}
+              style={{ alignItems: 'center' }}
             >
               <Animated.View
                 style={[
