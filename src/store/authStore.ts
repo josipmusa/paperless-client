@@ -56,7 +56,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ isLoading: false });
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        return;
+      }
+      
       set({ session, user: session?.user ?? null });
       if (session) {
         try {
