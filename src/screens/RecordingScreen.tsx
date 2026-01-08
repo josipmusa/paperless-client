@@ -2,16 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
   Linking,
+  Animated,
+  PanResponder,
+  TouchableOpacity,
 } from 'react-native';
 import { useAudioRecorder, RecordingOptions, AudioModule, IOSOutputFormat, AudioQuality } from 'expo-audio';
 import { createInvoiceFromVoice, getInvoicePdfLink } from '../api/invoiceApi';
 import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
-import { JobStatus } from '../websocket/jobWebSocket';
+
+const CANCEL_THRESHOLD = -100;
 
 const recordingOptions: RecordingOptions = {
   extension: '.m4a',
@@ -39,14 +42,16 @@ const recordingOptions: RecordingOptions = {
   },
 };
 
+type RecordingState = 'idle' | 'recording' | 'uploading' | 'processing' | 'done';
+
 export default function RecordingScreen() {
-  const [isRecording, setIsRecording] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+  const [slideOffset] = useState(new Animated.Value(0));
+  const [isCancelling, setIsCancelling] = useState(false);
+  
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-
   const audioRecorder = useAudioRecorder(recordingOptions);
 
   const currentJob = useJobStore((state) => state.currentJob);
@@ -69,19 +74,20 @@ export default function RecordingScreen() {
         'Failed to process your voice recording. Please try again.',
         [{ text: 'OK', onPress: handleReset }]
       );
+    } else if (currentJob?.status === 'PENDING' || currentJob?.status === 'RUNNING') {
+      setRecordingState('processing');
     }
   }, [currentJob?.status]);
 
   const fetchPdfLink = async (invoiceId: string) => {
-    setIsLoadingPdf(true);
     try {
       const url = await getInvoicePdfLink(invoiceId);
       setPdfUrl(url);
+      setRecordingState('done');
     } catch (error) {
       console.error('Failed to get PDF link:', error);
       Alert.alert('Error', 'Failed to get invoice PDF. Please try again.');
-    } finally {
-      setIsLoadingPdf(false);
+      setRecordingState('idle');
     }
   };
 
@@ -94,6 +100,8 @@ export default function RecordingScreen() {
   const handleReset = () => {
     clearCurrentJob();
     setPdfUrl(null);
+    setRecordingState('idle');
+    setRecordingDuration(0);
   };
 
   const startRecording = async () => {
@@ -110,7 +118,7 @@ export default function RecordingScreen() {
       });
 
       audioRecorder.record();
-      setIsRecording(true);
+      setRecordingState('recording');
       setRecordingDuration(0);
 
       intervalRef.current = setInterval(() => {
@@ -122,37 +130,43 @@ export default function RecordingScreen() {
     }
   };
 
-  const stopRecording = async () => {
+  const stopRecording = async (cancelled: boolean = false) => {
     try {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
 
-      setIsRecording(false);
       await audioRecorder.stop();
       
-      // Small delay to ensure URI is available
+      if (cancelled) {
+        setRecordingState('idle');
+        setRecordingDuration(0);
+        return;
+      }
+
       await new Promise(resolve => setTimeout(resolve, 100));
-      
       const uri = audioRecorder.uri;
 
       if (uri) {
         await uploadRecording(uri);
       } else {
         Alert.alert('Error', 'Recording file not found. Please try again.');
+        setRecordingState('idle');
       }
     } catch (error) {
       console.error('Failed to stop recording:', error);
       Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      setRecordingState('idle');
     }
   };
 
   const uploadRecording = async (uri: string) => {
-    setIsUploading(true);
+    setRecordingState('uploading');
     try {
       const jobId = await createInvoiceFromVoice(uri);
       setCurrentJob({ id: jobId, status: 'PENDING' });
+      setRecordingState('processing');
       setRecordingDuration(0);
     } catch (error: any) {
       console.error('Failed to upload recording:', error);
@@ -160,45 +174,150 @@ export default function RecordingScreen() {
         'Upload Failed',
         error.response?.data?.message || 'Failed to upload recording. Please try again.'
       );
-    } finally {
-      setIsUploading(false);
+      setRecordingState('idle');
     }
   };
 
-  const getStatusText = (status: JobStatus): string => {
-    switch (status) {
-      case 'PENDING':
-        return 'Queued for processing...';
-      case 'RUNNING':
-        return 'Processing your recording...';
-      case 'DONE':
-        return 'Invoice created!';
-      case 'FAILED':
-        return 'Processing failed';
-      default:
-        return '';
-    }
-  };
-
-  const getStatusColor = (status: JobStatus): string => {
-    switch (status) {
-      case 'PENDING':
-        return '#f39c12';
-      case 'RUNNING':
-        return '#3498db';
-      case 'DONE':
-        return '#27ae60';
-      case 'FAILED':
-        return '#e74c3c';
-      default:
-        return '#666';
-    }
-  };
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => recordingState === 'idle',
+      onMoveShouldSetPanResponder: () => recordingState === 'recording',
+      onPanResponderGrant: () => {
+        if (recordingState === 'idle') {
+          startRecording();
+        }
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (recordingState === 'recording' && gestureState.dx < 0) {
+          slideOffset.setValue(Math.max(gestureState.dx, CANCEL_THRESHOLD - 20));
+          setIsCancelling(gestureState.dx < CANCEL_THRESHOLD);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (recordingState === 'recording') {
+          const shouldCancel = gestureState.dx < CANCEL_THRESHOLD;
+          Animated.spring(slideOffset, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+          setIsCancelling(false);
+          stopRecording(shouldCancel);
+        }
+      },
+    })
+  ).current;
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const renderContent = () => {
+    switch (recordingState) {
+      case 'idle':
+        return (
+          <View style={styles.idleContainer}>
+            <View style={styles.micIconContainer}>
+              <Text style={styles.micIcon}>🎤</Text>
+            </View>
+            <Animated.View
+              style={[styles.recordButton, { transform: [{ translateX: slideOffset }] }]}
+              {...panResponder.panHandlers}
+            >
+              <Text style={styles.recordButtonText}>Hold to Record</Text>
+            </Animated.View>
+            <Text style={styles.hint}>Press and hold to record your invoice</Text>
+          </View>
+        );
+
+      case 'recording':
+        return (
+          <View style={styles.recordingContainer}>
+            <View style={styles.slideHintContainer}>
+              <Animated.View
+                style={[
+                  styles.slideHint,
+                  {
+                    opacity: slideOffset.interpolate({
+                      inputRange: [CANCEL_THRESHOLD, 0],
+                      outputRange: [1, 0.5],
+                    }),
+                  },
+                ]}
+              >
+                <Text style={styles.slideHintText}>{'<'} Slide to cancel</Text>
+              </Animated.View>
+            </View>
+            
+            <View style={styles.timerContainer}>
+              <View style={[styles.recordingDot, isCancelling && styles.cancellingDot]} />
+              <Text style={[styles.timerText, isCancelling && styles.cancellingText]}>
+                {formatDuration(recordingDuration)}
+              </Text>
+            </View>
+
+            <Animated.View
+              style={[
+                styles.recordButtonActive,
+                { transform: [{ translateX: slideOffset }] },
+                isCancelling && styles.recordButtonCancelling,
+              ]}
+              {...panResponder.panHandlers}
+            >
+              <Text style={styles.recordButtonActiveText}>
+                {isCancelling ? '✕' : '●'}
+              </Text>
+            </Animated.View>
+            
+            <Text style={styles.hint}>
+              {isCancelling ? 'Release to cancel' : 'Release to send'}
+            </Text>
+          </View>
+        );
+
+      case 'uploading':
+        return (
+          <View style={styles.uploadingContainer}>
+            <View style={styles.uploadingIconContainer}>
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+            <Text style={styles.uploadingText}>Uploading...</Text>
+            <Text style={styles.hint}>Please wait</Text>
+          </View>
+        );
+
+      case 'processing':
+        return (
+          <View style={styles.processingContainer}>
+            <View style={styles.progressContainer}>
+              <ActivityIndicator size="large" color="#3498db" />
+            </View>
+            <Text style={styles.processingText}>
+              {currentJob?.status === 'PENDING' ? 'Queued...' : 'Processing...'}
+            </Text>
+            <Text style={styles.hint}>Your invoice is being generated</Text>
+          </View>
+        );
+
+      case 'done':
+        return (
+          <View style={styles.doneContainer}>
+            <View style={styles.successIconContainer}>
+              <Text style={styles.successIcon}>✓</Text>
+            </View>
+            <Text style={styles.successText}>Invoice Ready!</Text>
+            
+            <TouchableOpacity style={styles.viewPdfButton} onPress={handleViewPdf}>
+              <Text style={styles.viewPdfButtonText}>View Invoice PDF</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={handleReset}>
+              <Text style={styles.newRecordingLink}>Create Another Invoice</Text>
+            </TouchableOpacity>
+          </View>
+        );
+    }
   };
 
   return (
@@ -207,75 +326,7 @@ export default function RecordingScreen() {
       <Text style={styles.subtitle}>
         Record a voice message describing the invoice details
       </Text>
-
-      <View style={styles.recordingArea}>
-        <Text style={styles.duration}>{formatDuration(recordingDuration)}</Text>
-        
-        {isRecording && (
-          <View style={styles.recordingIndicator}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>Recording...</Text>
-          </View>
-        )}
-      </View>
-
-      {isUploading ? (
-        <View style={styles.uploadingContainer}>
-          <ActivityIndicator size="large" color="#3498db" />
-          <Text style={styles.uploadingText}>Uploading recording...</Text>
-        </View>
-      ) : isLoadingPdf ? (
-        <View style={styles.processingContainer}>
-          <ActivityIndicator size="large" color="#27ae60" />
-          <Text style={[styles.statusText, { color: '#27ae60' }]}>
-            Preparing your invoice...
-          </Text>
-        </View>
-      ) : pdfUrl ? (
-        <View style={styles.successContainer}>
-          <Text style={styles.successIcon}>✓</Text>
-          <Text style={styles.successText}>Invoice Ready!</Text>
-          <TouchableOpacity style={styles.viewPdfButton} onPress={handleViewPdf}>
-            <Text style={styles.viewPdfButtonText}>View PDF</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.newRecordingButton} onPress={handleReset}>
-            <Text style={styles.newRecordingButtonText}>Create Another Invoice</Text>
-          </TouchableOpacity>
-        </View>
-      ) : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING') ? (
-        <View style={styles.processingContainer}>
-          <ActivityIndicator size="large" color={getStatusColor(currentJob.status)} />
-          <Text style={[styles.statusText, { color: getStatusColor(currentJob.status) }]}>
-            {getStatusText(currentJob.status)}
-          </Text>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={[
-            styles.recordButton,
-            isRecording && styles.recordButtonActive,
-          ]}
-          onPress={isRecording ? stopRecording : startRecording}
-          activeOpacity={0.7}
-        >
-          <View
-            style={[
-              styles.recordButtonInner,
-              isRecording && styles.recordButtonInnerActive,
-            ]}
-          />
-        </TouchableOpacity>
-      )}
-
-      <Text style={styles.hint}>
-        {pdfUrl
-          ? 'Your invoice is ready to view'
-          : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
-            ? 'Please wait while we process your recording'
-          : isRecording
-            ? 'Tap to stop recording'
-            : 'Tap to start recording'}
-      </Text>
+      {renderContent()}
     </View>
   );
 }
@@ -300,20 +351,67 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 48,
   },
-  recordingArea: {
+  hint: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+
+  // Idle State
+  idleContainer: {
     alignItems: 'center',
-    marginBottom: 48,
   },
-  duration: {
-    fontSize: 48,
-    fontWeight: '300',
-    color: '#333',
-    fontVariant: ['tabular-nums'],
+  micIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#e8e8e8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
   },
-  recordingIndicator: {
+  micIcon: {
+    fontSize: 36,
+  },
+  recordButton: {
+    backgroundColor: '#3498db',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 30,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  recordButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
+  // Recording State
+  recordingContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  slideHintContainer: {
+    height: 30,
+    marginBottom: 16,
+  },
+  slideHint: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
+  },
+  slideHintText: {
+    color: '#999',
+    fontSize: 14,
+  },
+  timerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 32,
   },
   recordingDot: {
     width: 12,
@@ -322,92 +420,115 @@ const styles = StyleSheet.create({
     backgroundColor: '#e74c3c',
     marginRight: 8,
   },
-  recordingText: {
-    fontSize: 16,
-    color: '#e74c3c',
-    fontWeight: '500',
+  cancellingDot: {
+    backgroundColor: '#999',
   },
-  recordButton: {
+  timerText: {
+    fontSize: 48,
+    fontWeight: '300',
+    color: '#e74c3c',
+    fontVariant: ['tabular-nums'],
+  },
+  cancellingText: {
+    color: '#999',
+  },
+  recordButtonActive: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#e74c3c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  recordButtonCancelling: {
+    backgroundColor: '#999',
+  },
+  recordButtonActiveText: {
+    color: '#fff',
+    fontSize: 28,
+  },
+
+  // Uploading State
+  uploadingContainer: {
+    alignItems: 'center',
+  },
+  uploadingIconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#fff',
-    borderWidth: 4,
-    borderColor: '#e74c3c',
+    backgroundColor: '#3498db',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-  },
-  recordButtonActive: {
-    borderColor: '#333',
-  },
-  recordButtonInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#e74c3c',
-  },
-  recordButtonInnerActive: {
-    width: 28,
-    height: 28,
-    borderRadius: 4,
-    backgroundColor: '#333',
-  },
-  hint: {
-    fontSize: 14,
-    color: '#999',
-  },
-  uploadingContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  uploadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#3498db',
-  },
-  processingContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  statusText: {
-    marginTop: 16,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  successContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  successIcon: {
-    fontSize: 48,
-    color: '#27ae60',
     marginBottom: 16,
   },
+  uploadingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#3498db',
+  },
+
+  // Processing State
+  processingContainer: {
+    alignItems: 'center',
+  },
+  progressContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#e8f4fc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  processingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#3498db',
+  },
+
+  // Done State
+  doneContainer: {
+    alignItems: 'center',
+  },
+  successIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#27ae60',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  successIcon: {
+    fontSize: 40,
+    color: '#fff',
+  },
   successText: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '600',
     color: '#27ae60',
     marginBottom: 24,
   },
   viewPdfButton: {
     backgroundColor: '#3498db',
-    borderRadius: 8,
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 32,
-    marginBottom: 12,
+    borderRadius: 30,
+    marginBottom: 16,
   },
   viewPdfButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
   },
-  newRecordingButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  newRecordingButtonText: {
+  newRecordingLink: {
     color: '#3498db',
-    fontSize: 14,
+    fontSize: 16,
+    paddingVertical: 8,
   },
 });
