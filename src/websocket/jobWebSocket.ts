@@ -1,4 +1,5 @@
 import { Client, IMessage } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 import { supabase } from '../auth/supabase';
 
 export type JobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
@@ -11,7 +12,7 @@ export interface JobUpdate {
 
 type JobUpdateCallback = (update: JobUpdate) => void;
 
-const WS_URL = process.env.EXPO_PUBLIC_WS_URL || 'ws://localhost:8080/ws-job-updates';
+const WS_URL = process.env.EXPO_PUBLIC_WS_URL || 'http://localhost:8080/ws-job-updates';
 
 class JobWebSocketService {
   private client: Client | null = null;
@@ -34,7 +35,7 @@ class JobWebSocketService {
     const accessToken = session.access_token;
 
     this.client = new Client({
-      brokerURL: `${WS_URL}?token=${accessToken}`,
+      webSocketFactory: () => new SockJS(`${WS_URL}?token=${accessToken}`),
       reconnectDelay: 5000,
       heartbeatIncoming: 10000,
       heartbeatOutgoing: 10000,
