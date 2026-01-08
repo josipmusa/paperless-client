@@ -6,9 +6,10 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { Audio } from 'expo-av';
-import { createInvoiceFromVoice } from '../api/invoiceApi';
+import { createInvoiceFromVoice, getInvoicePdfLink } from '../api/invoiceApi';
 import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
 import { JobStatus } from '../websocket/jobWebSocket';
 
@@ -16,6 +17,8 @@ export default function RecordingScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -31,20 +34,40 @@ export default function RecordingScreen() {
   }, []);
 
   useEffect(() => {
-    if (currentJob?.status === 'DONE') {
-      Alert.alert(
-        'Invoice Ready',
-        `Your invoice has been created successfully!\nInvoice ID: ${currentJob.resultRef}`,
-        [{ text: 'OK', onPress: clearCurrentJob }]
-      );
+    if (currentJob?.status === 'DONE' && currentJob.resultRef) {
+      fetchPdfLink(currentJob.resultRef);
     } else if (currentJob?.status === 'FAILED') {
       Alert.alert(
         'Processing Failed',
         'Failed to process your voice recording. Please try again.',
-        [{ text: 'OK', onPress: clearCurrentJob }]
+        [{ text: 'OK', onPress: handleReset }]
       );
     }
   }, [currentJob?.status]);
+
+  const fetchPdfLink = async (invoiceId: string) => {
+    setIsLoadingPdf(true);
+    try {
+      const url = await getInvoicePdfLink(invoiceId);
+      setPdfUrl(url);
+    } catch (error) {
+      console.error('Failed to get PDF link:', error);
+      Alert.alert('Error', 'Failed to get invoice PDF. Please try again.');
+    } finally {
+      setIsLoadingPdf(false);
+    }
+  };
+
+  const handleViewPdf = async () => {
+    if (pdfUrl) {
+      await Linking.openURL(pdfUrl);
+    }
+  };
+
+  const handleReset = () => {
+    clearCurrentJob();
+    setPdfUrl(null);
+  };
 
   const startRecording = async () => {
     try {
@@ -196,13 +219,30 @@ export default function RecordingScreen() {
           <ActivityIndicator size="large" color="#3498db" />
           <Text style={styles.uploadingText}>Uploading recording...</Text>
         </View>
+      ) : isLoadingPdf ? (
+        <View style={styles.processingContainer}>
+          <ActivityIndicator size="large" color="#27ae60" />
+          <Text style={[styles.statusText, { color: '#27ae60' }]}>
+            Preparing your invoice...
+          </Text>
+        </View>
+      ) : pdfUrl ? (
+        <View style={styles.successContainer}>
+          <Text style={styles.successIcon}>✓</Text>
+          <Text style={styles.successText}>Invoice Ready!</Text>
+          <TouchableOpacity style={styles.viewPdfButton} onPress={handleViewPdf}>
+            <Text style={styles.viewPdfButtonText}>View PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.newRecordingButton} onPress={handleReset}>
+            <Text style={styles.newRecordingButtonText}>Create Another Invoice</Text>
+          </TouchableOpacity>
+        </View>
       ) : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING') ? (
         <View style={styles.processingContainer}>
           <ActivityIndicator size="large" color={getStatusColor(currentJob.status)} />
           <Text style={[styles.statusText, { color: getStatusColor(currentJob.status) }]}>
             {getStatusText(currentJob.status)}
           </Text>
-          <Text style={styles.jobIdText}>Job ID: {currentJob.id}</Text>
         </View>
       ) : (
         <TouchableOpacity
@@ -223,8 +263,10 @@ export default function RecordingScreen() {
       )}
 
       <Text style={styles.hint}>
-        {currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
-          ? 'Please wait while we process your recording'
+        {pdfUrl
+          ? 'Your invoice is ready to view'
+          : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
+            ? 'Please wait while we process your recording'
           : isRecording
             ? 'Tap to stop recording'
             : 'Tap to start recording'}
@@ -328,9 +370,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  jobIdText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: '#999',
+  successContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  successIcon: {
+    fontSize: 48,
+    color: '#27ae60',
+    marginBottom: 16,
+  },
+  successText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#27ae60',
+    marginBottom: 24,
+  },
+  viewPdfButton: {
+    backgroundColor: '#3498db',
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    marginBottom: 12,
+  },
+  viewPdfButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  newRecordingButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  newRecordingButtonText: {
+    color: '#3498db',
+    fontSize: 14,
   },
 });
