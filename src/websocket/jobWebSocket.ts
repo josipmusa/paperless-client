@@ -35,7 +35,7 @@ class JobWebSocketService {
     const accessToken = session.access_token;
 
     this.client = new Client({
-      webSocketFactory: () => new SockJS(`${WS_URL}?token=${accessToken}`),
+      webSocketFactory: () => new SockJS(`${WS_URL}`),
       reconnectDelay: 5000,
       heartbeatIncoming: 10000,
       heartbeatOutgoing: 10000,
