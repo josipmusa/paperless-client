@@ -7,9 +7,9 @@ import {
   ActivityIndicator,
   Linking,
   Animated,
-  PanResponder,
-  TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAudioRecorder, RecordingOptions, AudioModule, IOSOutputFormat, AudioQuality } from 'expo-audio';
 import { createInvoiceFromVoice, getInvoicePdfLink } from '../api/invoiceApi';
 import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
@@ -48,8 +48,9 @@ export default function RecordingScreen() {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [slideOffset] = useState(new Animated.Value(0));
+  const slideX = useRef(new Animated.Value(0)).current;
   const [isCancelling, setIsCancelling] = useState(false);
+  const touchStartX = useRef(0);
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRecorder = useAudioRecorder(recordingOptions);
@@ -62,6 +63,9 @@ export default function RecordingScreen() {
     initializeJobWebSocket();
     return () => {
       disconnectJobWebSocket();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
     };
   }, []);
 
@@ -109,7 +113,7 @@ export default function RecordingScreen() {
       const status = await AudioModule.requestRecordingPermissionsAsync();
       if (!status.granted) {
         Alert.alert('Permission Denied', 'Microphone permission is required to record audio.');
-        return;
+        return false;
       }
 
       await AudioModule.setAudioModeAsync({
@@ -124,9 +128,12 @@ export default function RecordingScreen() {
       intervalRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
+      
+      return true;
     } catch (error) {
       console.error('Failed to start recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
+      return false;
     }
   };
 
@@ -178,34 +185,35 @@ export default function RecordingScreen() {
     }
   };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => recordingState === 'idle',
-      onMoveShouldSetPanResponder: () => recordingState === 'recording',
-      onPanResponderGrant: () => {
-        if (recordingState === 'idle') {
-          startRecording();
-        }
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (recordingState === 'recording' && gestureState.dx < 0) {
-          slideOffset.setValue(Math.max(gestureState.dx, CANCEL_THRESHOLD - 20));
-          setIsCancelling(gestureState.dx < CANCEL_THRESHOLD);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (recordingState === 'recording') {
-          const shouldCancel = gestureState.dx < CANCEL_THRESHOLD;
-          Animated.spring(slideOffset, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-          setIsCancelling(false);
-          stopRecording(shouldCancel);
-        }
-      },
-    })
-  ).current;
+  const handlePressIn = async (event: any) => {
+    if (recordingState !== 'idle') return;
+    touchStartX.current = event.nativeEvent.pageX;
+    await startRecording();
+  };
+
+  const handlePressOut = () => {
+    if (recordingState === 'recording') {
+      Animated.spring(slideX, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+      setIsCancelling(false);
+      stopRecording(isCancelling);
+    }
+  };
+
+  const handleTouchMove = (event: any) => {
+    if (recordingState !== 'recording') return;
+    
+    const currentX = event.nativeEvent.pageX;
+    const deltaX = currentX - touchStartX.current;
+    
+    if (deltaX < 0) {
+      const clampedDelta = Math.max(deltaX, CANCEL_THRESHOLD - 20);
+      slideX.setValue(clampedDelta);
+      setIsCancelling(deltaX < CANCEL_THRESHOLD);
+    }
+  };
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -219,14 +227,17 @@ export default function RecordingScreen() {
         return (
           <View style={styles.idleContainer}>
             <View style={styles.micIconContainer}>
-              <Text style={styles.micIcon}>🎤</Text>
+              <Ionicons name="mic" size={36} color="#666" />
             </View>
-            <Animated.View
-              style={[styles.recordButton, { transform: [{ translateX: slideOffset }] }]}
-              {...panResponder.panHandlers}
+            <Pressable
+              style={styles.recordButton}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              onTouchMove={handleTouchMove}
             >
+              <Ionicons name="mic" size={24} color="#fff" style={{ marginRight: 8 }} />
               <Text style={styles.recordButtonText}>Hold to Record</Text>
-            </Animated.View>
+            </Pressable>
             <Text style={styles.hint}>Press and hold to record your invoice</Text>
           </View>
         );
@@ -239,9 +250,9 @@ export default function RecordingScreen() {
                 style={[
                   styles.slideHint,
                   {
-                    opacity: slideOffset.interpolate({
+                    opacity: slideX.interpolate({
                       inputRange: [CANCEL_THRESHOLD, 0],
-                      outputRange: [1, 0.5],
+                      outputRange: [1, 0.3],
                     }),
                   },
                 ]}
@@ -257,18 +268,24 @@ export default function RecordingScreen() {
               </Text>
             </View>
 
-            <Animated.View
-              style={[
-                styles.recordButtonActive,
-                { transform: [{ translateX: slideOffset }] },
-                isCancelling && styles.recordButtonCancelling,
-              ]}
-              {...panResponder.panHandlers}
+            <Pressable
+              onPressOut={handlePressOut}
+              onTouchMove={handleTouchMove}
             >
-              <Text style={styles.recordButtonActiveText}>
-                {isCancelling ? '✕' : '●'}
-              </Text>
-            </Animated.View>
+              <Animated.View
+                style={[
+                  styles.recordButtonActive,
+                  { transform: [{ translateX: slideX }] },
+                  isCancelling && styles.recordButtonCancelling,
+                ]}
+              >
+                {isCancelling ? (
+                  <Ionicons name="close" size={32} color="#fff" />
+                ) : (
+                  <View style={styles.recordingCircle} />
+                )}
+              </Animated.View>
+            </Pressable>
             
             <Text style={styles.hint}>
               {isCancelling ? 'Release to cancel' : 'Release to send'}
@@ -304,17 +321,17 @@ export default function RecordingScreen() {
         return (
           <View style={styles.doneContainer}>
             <View style={styles.successIconContainer}>
-              <Text style={styles.successIcon}>✓</Text>
+              <Ionicons name="checkmark" size={48} color="#fff" />
             </View>
             <Text style={styles.successText}>Invoice Ready!</Text>
             
-            <TouchableOpacity style={styles.viewPdfButton} onPress={handleViewPdf}>
+            <Pressable style={styles.viewPdfButton} onPress={handleViewPdf}>
               <Text style={styles.viewPdfButtonText}>View Invoice PDF</Text>
-            </TouchableOpacity>
+            </Pressable>
             
-            <TouchableOpacity onPress={handleReset}>
+            <Pressable onPress={handleReset}>
               <Text style={styles.newRecordingLink}>Create Another Invoice</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         );
     }
@@ -371,14 +388,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 32,
   },
-  micIcon: {
-    fontSize: 36,
-  },
   recordButton: {
+    flexDirection: 'row',
     backgroundColor: '#3498db',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 30,
+    alignItems: 'center',
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -448,9 +464,11 @@ const styles = StyleSheet.create({
   recordButtonCancelling: {
     backgroundColor: '#999',
   },
-  recordButtonActiveText: {
-    color: '#fff',
-    fontSize: 28,
+  recordingCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
   },
 
   // Uploading State
@@ -503,10 +521,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-  },
-  successIcon: {
-    fontSize: 40,
-    color: '#fff',
   },
   successText: {
     fontSize: 24,
