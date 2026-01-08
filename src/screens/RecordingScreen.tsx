@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { useAudioRecorder, RecordingOptions, AudioModule } from 'expo-audio';
+import { useAudioRecorder, RecordingOptions, AudioModule, IOSOutputFormat, AudioQuality } from 'expo-audio';
 import { createInvoiceFromVoice, getInvoicePdfLink } from '../api/invoiceApi';
 import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
 import { JobStatus } from '../websocket/jobWebSocket';
@@ -18,6 +18,25 @@ const recordingOptions: RecordingOptions = {
   sampleRate: 44100,
   numberOfChannels: 1,
   bitRate: 128000,
+  android: {
+    extension: '.wav',
+    outputFormat: 'default',
+    audioEncoder: 'default',
+    sampleRate: 44100,
+  },
+  ios: {
+    extension: '.wav',
+    outputFormat: IOSOutputFormat.LINEARPCM,
+    audioQuality: AudioQuality.HIGH,
+    sampleRate: 44100,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+    mimeType: 'audio/wav',
+    bitsPerSecond: 128000,
+  },
 };
 
 export default function RecordingScreen() {
