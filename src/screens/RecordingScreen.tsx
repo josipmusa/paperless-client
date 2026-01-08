@@ -188,20 +188,26 @@ export default function RecordingScreen() {
     console.log('Press In - Current State:', recordingState);
     if (recordingState !== 'idle') return;
     touchStartX.current = event.nativeEvent.pageX;
+    slideX.setValue(0);
+    setIsCancelling(false);
     console.log('Starting recording...');
     await startRecording();
   };
 
-  const handlePressOut = () => {
-    console.log('Press Out - Current State:', recordingState, 'Is Cancelling:', isCancelling);
+  const handlePressOut = (event: any) => {
+    const currentX = event.nativeEvent.pageX;
+    const deltaX = currentX - touchStartX.current;
+    const shouldCancel = deltaX < CANCEL_THRESHOLD;
+    
+    console.log('Press Out - Current State:', recordingState, 'DeltaX:', deltaX, 'Should Cancel:', shouldCancel);
+    
     if (recordingState === 'recording') {
       Animated.spring(slideX, {
         toValue: 0,
         useNativeDriver: true,
       }).start();
-      const wasCancelling = isCancelling;
       setIsCancelling(false);
-      stopRecording(wasCancelling);
+      stopRecording(shouldCancel);
     }
   };
 
@@ -216,7 +222,10 @@ export default function RecordingScreen() {
     if (deltaX < 0) {
       const clampedDelta = Math.max(deltaX, CANCEL_THRESHOLD - 20);
       slideX.setValue(clampedDelta);
-      setIsCancelling(deltaX < CANCEL_THRESHOLD);
+      const shouldCancel = deltaX < CANCEL_THRESHOLD;
+      if (shouldCancel !== isCancelling) {
+        setIsCancelling(shouldCancel);
+      }
     }
   };
 
