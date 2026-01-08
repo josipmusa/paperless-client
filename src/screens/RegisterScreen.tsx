@@ -95,7 +95,7 @@ export default function RegisterScreen({ navigation }: Props) {
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
-                secureTextEntry
+                secureTextEntry={true}
               />
             )}
           />
@@ -115,7 +115,7 @@ export default function RegisterScreen({ navigation }: Props) {
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
-                secureTextEntry
+                secureTextEntry={true}
               />
             )}
           />

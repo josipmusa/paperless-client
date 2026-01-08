@@ -155,7 +155,7 @@ export default function CompanySetupScreen({ navigation }: Props) {
                 onBlur={onBlur}
                 onChangeText={onChange}
                 value={value}
-                multiline
+                multiline={true}
                 numberOfLines={4}
               />
             )}

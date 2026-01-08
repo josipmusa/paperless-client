@@ -85,7 +85,7 @@ export default function LoginScreen({ navigation }: Props) {
               onBlur={onBlur}
               onChangeText={onChange}
               value={value}
-              secureTextEntry
+              secureTextEntry={true}
             />
           )}
         />
