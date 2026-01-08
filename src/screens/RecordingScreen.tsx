@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,42 @@ import {
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { createInvoiceFromVoice } from '../api/invoiceApi';
+import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
+import { JobStatus } from '../websocket/jobWebSocket';
+
+export default function RecordingScreen() {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const currentJob = useJobStore((state) => state.currentJob);
+  const setCurrentJob = useJobStore((state) => state.setCurrentJob);
+  const clearCurrentJob = useJobStore((state) => state.clearCurrentJob);
+
+  useEffect(() => {
+    initializeJobWebSocket();
+    return () => {
+      disconnectJobWebSocket();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentJob?.status === 'DONE') {
+      Alert.alert(
+        'Invoice Ready',
+        `Your invoice has been created successfully!\nInvoice ID: ${currentJob.resultRef}`,
+        [{ text: 'OK', onPress: clearCurrentJob }]
+      );
+    } else if (currentJob?.status === 'FAILED') {
+      Alert.alert(
+        'Processing Failed',
+        'Failed to process your voice recording. Please try again.',
+        [{ text: 'OK', onPress: clearCurrentJob }]
+      );
+    }
+  }, [currentJob?.status]);
 
 export default function RecordingScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -95,10 +131,7 @@ export default function RecordingScreen() {
     setIsUploading(true);
     try {
       const jobId = await createInvoiceFromVoice(uri);
-      Alert.alert(
-        'Success',
-        `Recording uploaded! Job ID: ${jobId}\n\nYour invoice is being processed.`
-      );
+      setCurrentJob({ id: jobId, status: 'PENDING' });
       setRecordingDuration(0);
     } catch (error: any) {
       console.error('Failed to upload recording:', error);
@@ -108,6 +141,36 @@ export default function RecordingScreen() {
       );
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const getStatusText = (status: JobStatus): string => {
+    switch (status) {
+      case 'PENDING':
+        return 'Queued for processing...';
+      case 'RUNNING':
+        return 'Processing your recording...';
+      case 'DONE':
+        return 'Invoice created!';
+      case 'FAILED':
+        return 'Processing failed';
+      default:
+        return '';
+    }
+  };
+
+  const getStatusColor = (status: JobStatus): string => {
+    switch (status) {
+      case 'PENDING':
+        return '#f39c12';
+      case 'RUNNING':
+        return '#3498db';
+      case 'DONE':
+        return '#27ae60';
+      case 'FAILED':
+        return '#e74c3c';
+      default:
+        return '#666';
     }
   };
 
@@ -140,6 +203,14 @@ export default function RecordingScreen() {
           <ActivityIndicator size="large" color="#3498db" />
           <Text style={styles.uploadingText}>Uploading recording...</Text>
         </View>
+      ) : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING') ? (
+        <View style={styles.processingContainer}>
+          <ActivityIndicator size="large" color={getStatusColor(currentJob.status)} />
+          <Text style={[styles.statusText, { color: getStatusColor(currentJob.status) }]}>
+            {getStatusText(currentJob.status)}
+          </Text>
+          <Text style={styles.jobIdText}>Job ID: {currentJob.id}</Text>
+        </View>
       ) : (
         <TouchableOpacity
           style={[
@@ -159,9 +230,11 @@ export default function RecordingScreen() {
       )}
 
       <Text style={styles.hint}>
-        {isRecording
-          ? 'Tap to stop recording'
-          : 'Tap to start recording'}
+        {currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
+          ? 'Please wait while we process your recording'
+          : isRecording
+            ? 'Tap to stop recording'
+            : 'Tap to start recording'}
       </Text>
     </View>
   );
@@ -252,5 +325,19 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#3498db',
+  },
+  processingContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  statusText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  jobIdText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#999',
   },
 });
