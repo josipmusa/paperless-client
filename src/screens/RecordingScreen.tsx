@@ -51,6 +51,7 @@ export default function RecordingScreen() {
   const slideX = useRef(new Animated.Value(0)).current;
   const [isCancelling, setIsCancelling] = useState(false);
   const touchStartX = useRef(0);
+  const recordingStartTime = useRef(0);
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRecorder = useAudioRecorder(recordingOptions);
@@ -187,7 +188,9 @@ export default function RecordingScreen() {
   const handlePressIn = async (event: any) => {
     console.log('Press In - Current State:', recordingState);
     if (recordingState !== 'idle') return;
+    
     touchStartX.current = event.nativeEvent.pageX;
+    recordingStartTime.current = Date.now();
     slideX.setValue(0);
     setIsCancelling(false);
     console.log('Starting recording...');
@@ -195,6 +198,15 @@ export default function RecordingScreen() {
   };
 
   const handlePressOut = (event: any) => {
+    const pressDuration = Date.now() - recordingStartTime.current;
+    console.log('Press Out - Press Duration:', pressDuration, 'ms');
+    
+    // Ignore if this was a quick tap (less than 200ms)
+    if (pressDuration < 200) {
+      console.log('Quick tap detected, ignoring...');
+      return;
+    }
+    
     const currentX = event.nativeEvent.pageX;
     const deltaX = currentX - touchStartX.current;
     const shouldCancel = deltaX < CANCEL_THRESHOLD;
