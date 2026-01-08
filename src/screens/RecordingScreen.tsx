@@ -131,10 +131,17 @@ export default function RecordingScreen() {
 
       setIsRecording(false);
       await audioRecorder.stop();
+      
+      // Small delay to ensure URI is available
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const uri = audioRecorder.uri;
+      console.log('Recording URI:', uri);
 
       if (uri) {
         await uploadRecording(uri);
+      } else {
+        Alert.alert('Error', 'Recording file not found. Please try again.');
       }
     } catch (error) {
       console.error('Failed to stop recording:', error);
