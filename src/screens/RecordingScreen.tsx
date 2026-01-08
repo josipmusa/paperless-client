@@ -14,19 +14,19 @@ import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../
 import { JobStatus } from '../websocket/jobWebSocket';
 
 const recordingOptions: RecordingOptions = {
-  extension: '.wav',
+  extension: '.m4a',
   sampleRate: 44100,
   numberOfChannels: 1,
   bitRate: 128000,
   android: {
-    extension: '.wav',
-    outputFormat: 'default',
-    audioEncoder: 'default',
+    extension: '.m4a',
+    outputFormat: 'mpeg4',
+    audioEncoder: 'aac',
     sampleRate: 44100,
   },
   ios: {
-    extension: '.wav',
-    outputFormat: IOSOutputFormat.LINEARPCM,
+    extension: '.m4a',
+    outputFormat: IOSOutputFormat.MPEG4AAC,
     audioQuality: AudioQuality.HIGH,
     sampleRate: 44100,
     linearPCMBitDepth: 16,
@@ -34,7 +34,7 @@ const recordingOptions: RecordingOptions = {
     linearPCMIsFloat: false,
   },
   web: {
-    mimeType: 'audio/wav',
+    mimeType: 'audio/mp4',
     bitsPerSecond: 128000,
   },
 };
@@ -136,7 +136,6 @@ export default function RecordingScreen() {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       const uri = audioRecorder.uri;
-      console.log('Recording URI:', uri);
 
       if (uri) {
         await uploadRecording(uri);

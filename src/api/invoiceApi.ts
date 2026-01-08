@@ -11,8 +11,8 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<string> 
   
   formData.append('file', {
     uri: fileUri,
-    type: 'audio/wav',
-    name: 'recording.wav',
+    type: 'audio/m4a',
+    name: 'recording.m4a',
   } as any);
 
   const response = await apiClient.post<string>('/invoices', formData, {
