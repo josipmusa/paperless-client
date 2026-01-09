@@ -726,55 +726,76 @@ export default function VoiceToInvoiceScreen() {
               )}
             </View>
 
-            {/* Pulsing ring around mic button while recording */}
-            {isRecording && (
-              <Animated.View
-                style={[
-                  styles.pulseRing,
-                  {
-                    transform: [{ scale: recordingPulseAnim }],
-                    opacity: recordingPulseAnim.interpolate({
-                      inputRange: [1, 1.15],
-                      outputRange: [0.5, 0],
-                    }),
-                  },
-                ]}
-              />
-            )}
+            <View style={styles.micButtonContainer}>
+              {/* Pulsing rings around mic button while recording */}
+              {isRecording && (
+                <>
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      {
+                        transform: [{ scale: recordingPulseAnim }],
+                        opacity: recordingPulseAnim.interpolate({
+                          inputRange: [1, 1.15],
+                          outputRange: [0.6, 0],
+                        }),
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      {
+                        transform: [{ 
+                          scale: recordingPulseAnim.interpolate({
+                            inputRange: [1, 1.15],
+                            outputRange: [1.05, 1.2],
+                          })
+                        }],
+                        opacity: recordingPulseAnim.interpolate({
+                          inputRange: [1, 1.15],
+                          outputRange: [0.3, 0],
+                        }),
+                      },
+                    ]}
+                  />
+                </>
+              )}
 
-            <Animated.View
-                {...(isProcessing ? {} : panResponder.panHandlers)}
-                style={[
-                  styles.micButton,
-                  {
-                    backgroundColor: isRecording 
-                      ? "#dc2626" 
-                      : isGettingReady 
-                      ? "#f59e0b" 
-                      : "#2563eb",
-                    transform: [
-                      { scale: isGettingReady ? pulseAnim : scaleAnim }
-                    ],
-                    opacity: isProcessing ? 0.4 : 1,
-                  },
-                ]}
-                pointerEvents={isProcessing ? "none" : "auto"}
-            >
-              <Mic size={36} color="white" />
-              
-              {/* Cancel swipe indicator - overlays on button */}
               <Animated.View
-                style={[
-                  styles.swipeOverlay,
-                  { 
-                    opacity: cancelIndicatorOpacity,
-                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                  }
-                ]}
+                  {...(isProcessing ? {} : panResponder.panHandlers)}
+                  style={[
+                    styles.micButton,
+                    {
+                      backgroundColor: isRecording 
+                        ? "#dc2626" 
+                        : isGettingReady 
+                        ? "#f59e0b" 
+                        : "#2563eb",
+                      transform: [
+                        { scale: isGettingReady ? pulseAnim : scaleAnim }
+                      ],
+                      opacity: isProcessing ? 0.4 : 1,
+                    },
+                  ]}
+                  pointerEvents={isProcessing ? "none" : "auto"}
               >
-                <Text style={styles.swipeText}>✕</Text>
+                <Mic size={36} color="white" />
+                
+                {/* Cancel swipe indicator - overlays on button */}
+                <Animated.View
+                  style={[
+                    styles.swipeOverlay,
+                    { 
+                      opacity: cancelIndicatorOpacity,
+                      backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                    }
+                  ]}
+                >
+                  <Text style={styles.swipeText}>✕</Text>
+                </Animated.View>
               </Animated.View>
-            </Animated.View>
+            </View>
 
             {/* Animated arrows for slide to cancel gesture */}
             {isRecording && (
@@ -1038,14 +1059,21 @@ const styles = StyleSheet.create({
   },
   recordingArea: {
     alignItems: "center",
+    justifyContent: "center",
     minHeight: 140,
-    position: "relative",
   },
   timerContainer: {
     height: 24,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 4,
+  },
+  micButtonContainer: {
+    width: 96,
+    height: 96,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
   },
   recordingText: { 
     color: "#ef4444", 
@@ -1068,9 +1096,8 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: "#dc2626",
-    top: 28,
     zIndex: 1,
   },
   gestureIndicators: {
