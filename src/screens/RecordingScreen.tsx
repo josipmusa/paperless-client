@@ -8,7 +8,6 @@ import {
   Modal,
   Animated,
   PanResponder,
-  Alert,
   Linking,
   Vibration,
   ActivityIndicator,
@@ -26,6 +25,9 @@ import {
   CheckCircle,
   Share2,
   Loader2,
+  ChevronUp,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import {File, Paths} from 'expo-file-system';
@@ -63,6 +65,13 @@ export default function VoiceToInvoiceScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cancelIndicatorOpacity = useRef(new Animated.Value(0)).current;
   const processingSpinAnim = useRef(new Animated.Value(0)).current;
+  const recordingPulseAnim = useRef(new Animated.Value(1)).current;
+  const secondPulse = recordingPulseAnim.interpolate({
+    inputRange: [1, 1.15],
+    outputRange: [1.1, 1.25],
+  });
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const arrowSlideAnim = useRef(new Animated.Value(0)).current;
   const startY = useRef(0);
   const startX = useRef(0);
   const isCancelling = useRef(false);
@@ -88,6 +97,53 @@ export default function VoiceToInvoiceScreen() {
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
+
+  // Pulse animation for recording state
+  useEffect(() => {
+    if (isRecording) {
+      recordingPulseAnim.setValue(1);
+
+      pulseLoopRef.current = Animated.loop(
+          Animated.sequence([
+            Animated.timing(recordingPulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
+            Animated.delay(200),
+            Animated.timing(recordingPulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          ])
+      );
+
+      pulseLoopRef.current.start();
+    } else {
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = null;
+      recordingPulseAnim.setValue(1);
+    }
+
+    return () => {
+      pulseLoopRef.current?.stop();
+    };
+  }, [isRecording]);
+
+  // Animated arrows for "slide to cancel" gesture
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(arrowSlideAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(arrowSlideAnim, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      arrowSlideAnim.setValue(0);
+    }
+  }, [isRecording]);
 
   useEffect(() => {
     if (isRecording) {
@@ -211,7 +267,14 @@ export default function VoiceToInvoiceScreen() {
     } else if (update.status === "FAILED") {
       await forceStopRecording();
       setIsProcessing(false);
-      Alert.alert("Error", "Failed to process recording.");
+      Toast.show('Failed to process recording', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
       setInvoices((prev) => prev.filter((inv) => inv.jobId !== update.jobId));
     }
   };
@@ -367,7 +430,14 @@ export default function VoiceToInvoiceScreen() {
     } catch (e) {
       await forceStopRecording();
       setIsProcessing(false);
-      Alert.alert("Error", "Failed to process recording.");
+      Toast.show('Failed to process recording', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -405,11 +475,25 @@ export default function VoiceToInvoiceScreen() {
         );
         setShowSuccess(true);
       } else {
-        Alert.alert("Error", "Invoice information is not available yet. Please try again later.");
+        Toast.show('Invoice information is not available yet. Please try again later.', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
       }
     } catch (error) {
       console.error("Failed to retry fetch invoice:", error);
-      Alert.alert("Error", "Failed to fetch invoice information. Please try again.");
+      Toast.show('Failed to fetch invoice information. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -436,16 +520,24 @@ export default function VoiceToInvoiceScreen() {
     try {
       const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
 
-      Alert.alert(
-          'Invoice saved',
-          `Invoice ${invoiceNumber} is available offline.`,
-          [
-            { text: 'OK' }
-          ]
-      );
+      Toast.show(`Invoice ${invoiceNumber} is available offline`, {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#16a34a',
+        textColor: '#ffffff',
+      });
     } catch (error) {
       console.error("Failed to download PDF:", error);
-      Alert.alert("Error", "Failed to download PDF. Please try again.");
+      Toast.show('Failed to download PDF. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -453,7 +545,14 @@ export default function VoiceToInvoiceScreen() {
     try {
       const available = await Sharing.isAvailableAsync();
       if (!available) {
-        Alert.alert('Sharing unavailable', 'Your device does not support sharing.');
+        Toast.show('Your device does not support sharing', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
         return;
       }
 
@@ -462,10 +561,18 @@ export default function VoiceToInvoiceScreen() {
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
         dialogTitle: `Share Invoice ${invoiceNumber}`,
+        UTI: 'com.adobe.pdf',
       });
     } catch (error) {
       console.error(error);
-      Alert.alert('Share failed', 'Could not share the invoice.');
+      Toast.show('Could not share the invoice', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -477,11 +584,25 @@ export default function VoiceToInvoiceScreen() {
       if (canOpen) {
         await Linking.openURL(uri);
       } else {
-        Alert.alert('Unable to open PDF', 'No app available to view PDFs.');
+        Toast.show('No app available to view PDFs. Please install a PDF viewer from your app store.', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
       }
     } catch (error) {
       console.error('Failed to open PDF:', error);
-      Alert.alert('Error', 'Failed to open PDF. Please try again.');
+      Toast.show('Failed to open PDF. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -613,39 +734,148 @@ export default function VoiceToInvoiceScreen() {
               )}
             </View>
 
-            <Animated.View
-                {...(isProcessing ? {} : panResponder.panHandlers)}
-                style={[
-                  styles.micButton,
-                  {
-                    backgroundColor: isRecording 
-                      ? "#dc2626" 
-                      : isGettingReady 
-                      ? "#f59e0b" 
-                      : "#2563eb",
-                    transform: [
-                      { scale: isGettingReady ? pulseAnim : scaleAnim }
-                    ],
-                    opacity: isProcessing ? 0.4 : 1,
-                  },
-                ]}
-                pointerEvents={isProcessing ? "none" : "auto"}
-            >
-              <Mic size={36} color="white" />
-              
-              {/* Cancel swipe indicator - overlays on button */}
+            <View style={styles.micButtonContainer}>
+              {/* Pulsing rings around mic button while recording */}
+              {isRecording && (
+                <>
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      {
+                        transform: [{ scale: recordingPulseAnim }],
+                        opacity: recordingPulseAnim.interpolate({
+                          inputRange: [1, 1.15],
+                          outputRange: [0.6, 0],
+                        }),
+                      },
+                    ]}
+                  />
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      {
+                        transform: [{ scale: secondPulse}],
+                        opacity: recordingPulseAnim.interpolate({
+                          inputRange: [1, 1.15],
+                          outputRange: [0.3, 0],
+                        }),
+                      },
+                    ]}
+                  />
+                </>
+              )}
+
               <Animated.View
-                style={[
-                  styles.swipeOverlay,
-                  { 
-                    opacity: cancelIndicatorOpacity,
-                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                  }
-                ]}
+                  {...(isProcessing ? {} : panResponder.panHandlers)}
+                  style={[
+                    styles.micButton,
+                    {
+                      backgroundColor: isRecording 
+                        ? "#dc2626" 
+                        : isGettingReady 
+                        ? "#f59e0b" 
+                        : "#2563eb",
+                      transform: [
+                        { scale: isGettingReady ? pulseAnim : scaleAnim }
+                      ],
+                      opacity: isProcessing ? 0.4 : 1,
+                    },
+                  ]}
+                  pointerEvents={isProcessing ? "none" : "auto"}
               >
-                <Text style={styles.swipeText}>✕</Text>
+                <Mic size={36} color="white" />
+                
+                {/* Cancel swipe indicator - overlays on button */}
+                <Animated.View
+                  style={[
+                    styles.swipeOverlay,
+                    { 
+                      opacity: cancelIndicatorOpacity,
+                      backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                    }
+                  ]}
+                >
+                  <Text style={styles.swipeText}>✕</Text>
+                </Animated.View>
               </Animated.View>
-            </Animated.View>
+            </View>
+
+            {/* Animated arrows for slide to cancel gesture */}
+            {isRecording && (
+              <View style={styles.gestureIndicators}>
+                {/* Up arrow */}
+                <Animated.View
+                  style={[
+                    styles.arrowIndicator,
+                    styles.arrowUp,
+                    {
+                      opacity: arrowSlideAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.3, 0.8, 0.3],
+                      }),
+                      transform: [
+                        {
+                          translateY: arrowSlideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ChevronUp size={20} color="#ef4444" strokeWidth={3} />
+                </Animated.View>
+
+                {/* Left arrows */}
+                <Animated.View
+                  style={[
+                    styles.arrowIndicator,
+                    styles.arrowLeft,
+                    {
+                      opacity: arrowSlideAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.3, 0.8, 0.3],
+                      }),
+                      transform: [
+                        {
+                          translateX: arrowSlideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ChevronsLeft size={24} color="#ef4444" strokeWidth={3} />
+                </Animated.View>
+
+                {/* Right arrows */}
+                <Animated.View
+                  style={[
+                    styles.arrowIndicator,
+                    styles.arrowRight,
+                    {
+                      opacity: arrowSlideAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.3, 0.8, 0.3],
+                      }),
+                      transform: [
+                        {
+                          translateX: arrowSlideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ChevronsRight size={24} color="#ef4444" strokeWidth={3} />
+                </Animated.View>
+              </View>
+            )}
           </View>
 
           <Text style={styles.helperText}>
@@ -674,19 +904,23 @@ export default function VoiceToInvoiceScreen() {
                   <View style={styles.invoiceHeader}>
                     <View style={styles.invoiceTitleContainer}>
                       <PulsingDot status={item.status} />
-                      <Text style={styles.invoiceTitle} numberOfLines={1} ellipsizeMode="middle">
-                        {item.invoiceNumber ? `Invoice #${item.invoiceNumber}` : "Processing Invoice"}
-                      </Text>
+                      <View style={styles.invoiceTextContainer}>
+                        <Text style={styles.invoiceTitle} numberOfLines={1}>
+                          {item.customerName || "Processing..."}
+                        </Text>
+                        {item.invoiceNumber && (
+                          <Text style={styles.invoiceNumber} numberOfLines={1}>
+                            #{item.invoiceNumber}
+                          </Text>
+                        )}
+                      </View>
                     </View>
                     <Text style={[styles.status, statusStyle[item.status]]}>
                       {item.status}
                     </Text>
                   </View>
-                  <Text style={styles.invoiceClient}>
-                    {item.customerName || "Processing..."}
-                  </Text>
                   {item.amount && (
-                      <Text style={styles.invoiceAmount}>Amount: {item.amount}</Text>
+                      <Text style={styles.invoiceAmount}>{item.amount}</Text>
                   )}
                   
                   {item.fetchFailed && item.invoiceId && (
@@ -828,6 +1062,7 @@ const styles = StyleSheet.create({
   },
   recordingArea: {
     alignItems: "center",
+    justifyContent: "center",
     minHeight: 140,
   },
   timerContainer: {
@@ -835,6 +1070,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 4,
+  },
+  micButtonContainer: {
+    width: 96,
+    height: 96,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
   },
   recordingText: { 
     color: "#ef4444", 
@@ -850,6 +1092,43 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
+    zIndex: 2,
+  },
+  pulseRing: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 3,
+    borderColor: "#dc2626",
+    zIndex: 0,
+    top: -12,
+    left: -12,
+  },
+  gestureIndicators: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    top: 0,
+    zIndex: 0,
+  },
+  arrowIndicator: {
+    position: "absolute",
+  },
+  arrowUp: {
+    top: 0,
+    left: "50%",
+    marginLeft: -12,
+  },
+  arrowLeft: {
+    left: 20,
+    top: "50%",
+    marginTop: 16,
+  },
+  arrowRight: {
+    right: 20,
+    top: "50%",
+    marginTop: 16,
   },
   swipeOverlay: {
     position: "absolute",
@@ -904,16 +1183,33 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+    flexShrink: 0,
+  },
+  invoiceTextContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   invoiceTitle: { 
     fontWeight: "600", 
     color: "#f1f5f9",
-    flex: 1,
-    flexShrink: 1,
+    fontSize: 16,
   },
-  status: { fontSize: 12, fontWeight: "600" },
-  invoiceClient: { color: "#94a3b8", marginTop: 4 },
-  invoiceAmount: { marginTop: 8, fontWeight: "600", color: "#f1f5f9" },
+  invoiceNumber: {
+    fontSize: 12,
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+  status: { 
+    fontSize: 11, 
+    fontWeight: "600",
+    flexShrink: 0,
+  },
+  invoiceAmount: { 
+    marginTop: 8, 
+    fontSize: 18,
+    fontWeight: "700", 
+    color: "#4CAF50",
+  },
   retryBtn: {
     backgroundColor: "#ca8a04",
     padding: 10,
