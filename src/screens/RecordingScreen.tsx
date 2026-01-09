@@ -66,6 +66,11 @@ export default function VoiceToInvoiceScreen() {
   const cancelIndicatorOpacity = useRef(new Animated.Value(0)).current;
   const processingSpinAnim = useRef(new Animated.Value(0)).current;
   const recordingPulseAnim = useRef(new Animated.Value(1)).current;
+  const secondPulse = recordingPulseAnim.interpolate({
+    inputRange: [1, 1.15],
+    outputRange: [1.1, 1.25],
+  });
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const arrowSlideAnim = useRef(new Animated.Value(0)).current;
   const startY = useRef(0);
   const startX = useRef(0);
@@ -96,23 +101,26 @@ export default function VoiceToInvoiceScreen() {
   // Pulse animation for recording state
   useEffect(() => {
     if (isRecording) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(recordingPulseAnim, {
-            toValue: 1.15,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(recordingPulseAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
+      recordingPulseAnim.setValue(1);
+
+      pulseLoopRef.current = Animated.loop(
+          Animated.sequence([
+            Animated.timing(recordingPulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
+            Animated.delay(200),
+            Animated.timing(recordingPulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          ])
+      );
+
+      pulseLoopRef.current.start();
     } else {
+      pulseLoopRef.current?.stop();
+      pulseLoopRef.current = null;
       recordingPulseAnim.setValue(1);
     }
+
+    return () => {
+      pulseLoopRef.current?.stop();
+    };
   }, [isRecording]);
 
   // Animated arrows for "slide to cancel" gesture
@@ -746,12 +754,7 @@ export default function VoiceToInvoiceScreen() {
                     style={[
                       styles.pulseRing,
                       {
-                        transform: [{ 
-                          scale: recordingPulseAnim.interpolate({
-                            inputRange: [1, 1.15],
-                            outputRange: [1.05, 1.2],
-                          })
-                        }],
+                        transform: [{ scale: secondPulse}],
                         opacity: recordingPulseAnim.interpolate({
                           inputRange: [1, 1.15],
                           outputRange: [0.3, 0],
@@ -1093,12 +1096,14 @@ const styles = StyleSheet.create({
   },
   pulseRing: {
     position: "absolute",
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 4,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 3,
     borderColor: "#dc2626",
-    zIndex: 1,
+    zIndex: 0,
+    top: -12,
+    left: -12,
   },
   gestureIndicators: {
     position: "absolute",
