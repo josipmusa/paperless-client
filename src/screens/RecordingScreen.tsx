@@ -42,6 +42,8 @@ export default function VoiceToInvoiceScreen() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [completedInvoiceId, setCompletedInvoiceId] = useState<string | null>(null);
+  const isStartingRef = useRef(false);
+  const shouldCancelStartRef = useRef(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -152,6 +154,7 @@ export default function VoiceToInvoiceScreen() {
         setIsProcessing(false);
       }
     } else if (update.status === "FAILED") {
+      await forceStopRecording();
       setIsProcessing(false);
       Alert.alert("Error", "Failed to process recording.");
       setInvoices((prev) => prev.filter((inv) => inv.jobId !== update.jobId));
@@ -159,133 +162,119 @@ export default function VoiceToInvoiceScreen() {
   };
 
   const startRecording = async () => {
-    if (isProcessing) return;
+    if (isProcessing || isStartingRef.current || isRecording) return;
+
+    isStartingRef.current = true;
+    shouldCancelStartRef.current = false;
 
     try {
-      // Request permissions
       const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
-        Alert.alert("Permission Required", "Microphone access is needed to record audio.");
+        isStartingRef.current = false;
         return;
       }
 
-      // Configure audio mode
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
       });
 
-      // Start recording
-      await recorder.prepareToRecordAsync();
-      recorder.record();
+      // User released before we finished setup
+      if (shouldCancelStartRef.current) {
+        isStartingRef.current = false;
+        return;
+      }
 
-      recordingStartTime.current = Date.now();
-      recordingStarted.current = true;
-      setIsRecording(true);
-      Animated.spring(scaleAnim, {
-        toValue: 1.15,
-        useNativeDriver: true,
-      }).start();
+      await recorder.prepareToRecordAsync();
+
+      // ⏱ Delay start to avoid accidental taps
+      setTimeout(() => {
+        if (shouldCancelStartRef.current) {
+          isStartingRef.current = false;
+          return;
+        }
+
+        recorder.record();
+        recordingStartTime.current = Date.now();
+        recordingStarted.current = true;
+        isStartingRef.current = false;
+
+        setIsRecording(true);
+        Animated.spring(scaleAnim, {
+          toValue: 1.15,
+          useNativeDriver: true,
+        }).start();
+      }, 150);
     } catch (error) {
-      console.error("Failed to start recording:", error);
+      isStartingRef.current = false;
       recordingStarted.current = false;
-      Alert.alert("Error", "Failed to start recording. Please try again.");
+      console.error("Failed to start recording:", error);
     }
   };
 
+
   const stopRecording = async (cancelled: boolean) => {
-    // Check if recording actually started
+    // 👇 Stop a recording that is still starting
+    if (isStartingRef.current && !recordingStarted.current) {
+      shouldCancelStartRef.current = true;
+      isStartingRef.current = false;
+      return;
+    }
+
     if (!recordingStarted.current) {
-      console.log("Recording never started, ignoring stop request");
       return;
     }
 
-    const recordingDuration = Date.now() - recordingStartTime.current;
-    
-    // Ignore accidental taps (less than 500ms) - but still stop the recording
-    if (recordingDuration < 500) {
-      console.log("Recording too short, ignoring:", recordingDuration);
-      setIsRecording(false);
-      recordingStarted.current = false;
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-      }).start();
-      try {
-        await recorder.stop();
-      } catch (error) {
-        console.error("Failed to stop short recording:", error);
-      }
-      return;
-    }
+    const duration = Date.now() - recordingStartTime.current;
 
-    if (cancelled) {
-      console.log("Recording cancelled by user");
-      setIsRecording(false);
-      recordingStarted.current = false;
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-      }).start();
-      try {
-        await recorder.stop();
-      } catch (error) {
-        console.error("Failed to stop cancelled recording:", error);
-      }
-      return;
-    }
-
-    // Valid recording - stop and process
-    setIsRecording(false);
     recordingStarted.current = false;
+    setIsRecording(false);
+
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
     }).start();
 
-    // Stop recording and get URI
     try {
       await recorder.stop();
-      const uri = recorder.uri;
+    } catch {}
 
-      if (!uri) {
-        Alert.alert("Error", "Failed to save recording.");
-        return;
-      }
+    // 🚫 Discard short or cancelled recordings
+    if (duration < 500 || cancelled) {
+      return;
+    }
 
-      setIsProcessing(true);
+    // ✅ Valid recording
+    const uri = recorder.uri;
+    if (!uri) return;
 
-      try {
-        console.log("Sending audio to backend:", uri);
-        const jobId = await createInvoiceFromVoice(uri);
-        console.log("Job created with ID:", jobId);
-        
-        // Add invoice with job ID to the list
-        setInvoices((prev) => [
-          { 
-            jobId, 
-            customerName: "Processing...", 
-            status: "PENDING" 
-          },
-          ...prev.slice(0, 2),
-        ]);
+    setIsProcessing(true);
 
-      } catch (error: any) {
-        console.error("Failed to create invoice:", error);
-        console.error("Error details:", error.response?.data);
-        console.error("Error status:", error.response?.status);
-        setIsProcessing(false);
-        Alert.alert(
-          "Error", 
-          `Failed to process recording: ${error.response?.data?.message || error.message || 'Unknown error'}`
-        );
-      }
-    } catch (error) {
-      console.error("Failed to stop recording:", error);
-      Alert.alert("Error", "Failed to process recording.");
+    try {
+      const jobId = await createInvoiceFromVoice(uri);
+      setInvoices((prev) => [
+        { jobId, customerName: "Processing...", status: "PENDING" },
+        ...prev.slice(0, 2),
+      ]);
+    } catch (e) {
+      await forceStopRecording();
       setIsProcessing(false);
+      Alert.alert("Error", "Failed to process recording.");
     }
   };
+
+  const forceStopRecording = async () => {
+    if (recordingStarted.current || isStartingRef.current) {
+      recordingStarted.current = false;
+      isStartingRef.current = false;
+      setIsRecording(false);
+
+      try {
+        await recorder.stop();
+      } catch {}
+    }
+  };
+
 
   const retryFetchInvoice = async (jobId: string, invoiceId: string) => {
     try {
