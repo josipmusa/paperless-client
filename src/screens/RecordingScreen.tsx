@@ -22,15 +22,15 @@ import {
   CheckCircle,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
-import { createInvoiceFromVoice } from "../api/invoiceApi";
-
-type InvoiceStatus = "PENDING" | "RUNNING" | "COMPLETED";
+import { createInvoiceFromVoice, getInvoiceInformation } from "../api/invoiceApi";
+import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSocket";
 
 type Invoice = {
-  id: number;
-  client: string;
+  jobId: string;
+  invoiceNumber?: string;
+  customerName?: string;
   amount?: string;
-  status: InvoiceStatus;
+  status: JobStatus;
 };
 
 export default function VoiceToInvoiceScreen() {
@@ -39,9 +39,9 @@ export default function VoiceToInvoiceScreen() {
   const [seconds, setSeconds] = useState(0);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [completedInvoiceId, setCompletedInvoiceId] = useState<string | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const invoiceCounter = useRef(1248);
   
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -63,6 +63,68 @@ export default function VoiceToInvoiceScreen() {
 
     return () => clearInterval(timerRef.current!);
   }, [isRecording]);
+
+  useEffect(() => {
+    // Connect to WebSocket on mount
+    jobWebSocketService.connect();
+
+    // Subscribe to job updates
+    const unsubscribe = jobWebSocketService.subscribe(handleJobUpdate);
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  const handleJobUpdate = async (update: JobUpdate) => {
+    console.log("Received job update:", update);
+
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        if (inv.jobId === update.jobId) {
+          return {
+            ...inv,
+            status: update.status,
+          };
+        }
+        return inv;
+      })
+    );
+
+    // If job is done, fetch invoice information
+    if (update.status === "DONE" && update.resultRef) {
+      try {
+        const invoiceData = await getInvoiceInformation(update.resultRef);
+        
+        if (invoiceData) {
+          setInvoices((prev) =>
+            prev.map((inv) => {
+              if (inv.jobId === update.jobId) {
+                return {
+                  ...inv,
+                  invoiceNumber: invoiceData.invoiceNumber,
+                  customerName: invoiceData.customerName,
+                  amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                };
+              }
+              return inv;
+            })
+          );
+
+          setCompletedInvoiceId(update.resultRef);
+          setIsProcessing(false);
+          setShowSuccess(true);
+        }
+      } catch (error) {
+        console.error("Failed to fetch invoice information:", error);
+        setIsProcessing(false);
+      }
+    } else if (update.status === "FAILED") {
+      setIsProcessing(false);
+      Alert.alert("Error", "Failed to process recording.");
+      setInvoices((prev) => prev.filter((inv) => inv.jobId !== update.jobId));
+    }
+  };
 
   const startRecording = async () => {
     if (isProcessing) return;
@@ -120,38 +182,39 @@ export default function VoiceToInvoiceScreen() {
     // Stop recording and get URI
     try {
       await recorder.stop();
-      const uri = recorder.uri
+      const uri = recorder.uri;
 
       if (!uri) {
         Alert.alert("Error", "Failed to save recording.");
         return;
       }
 
-      // Create invoice from voice
-      const id = invoiceCounter.current++;
       setIsProcessing(true);
 
-      setInvoices((prev) => [
-        { id, client: "Processing...", status: "PENDING" },
-        ...prev.slice(0, 2),
-      ]);
-
       try {
-        const invoiceId = await createInvoiceFromVoice(uri);
+        console.log("Sending audio to backend:", uri);
+        const jobId = await createInvoiceFromVoice(uri);
+        console.log("Job created with ID:", jobId);
         
-        updateInvoice(id, "RUNNING");
+        // Add invoice with job ID to the list
+        setInvoices((prev) => [
+          { 
+            jobId, 
+            customerName: "Processing...", 
+            status: "PENDING" 
+          },
+          ...prev.slice(0, 2),
+        ]);
 
-        // Poll or wait for completion - for now, simulate
-        setTimeout(() => {
-          updateInvoice(id, "COMPLETED");
-          setIsProcessing(false);
-          setShowSuccess(true);
-        }, 5000);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to create invoice:", error);
-        setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+        console.error("Error details:", error.response?.data);
+        console.error("Error status:", error.response?.status);
         setIsProcessing(false);
-        Alert.alert("Error", "Failed to process recording. Please try again.");
+        Alert.alert(
+          "Error", 
+          `Failed to process recording: ${error.response?.data?.message || error.message || 'Unknown error'}`
+        );
       }
     } catch (error) {
       console.error("Failed to stop recording:", error);
@@ -160,20 +223,7 @@ export default function VoiceToInvoiceScreen() {
     }
   };
 
-  const updateInvoice = (id: number, status: InvoiceStatus) => {
-    setInvoices((prev) =>
-        prev.map((inv) =>
-            inv.id === id
-                ? {
-                  ...inv,
-                  status,
-                  client: status === "COMPLETED" ? "New Client Corp." : inv.client,
-                  amount: status === "COMPLETED" ? "$2,150.00" : undefined,
-                }
-                : inv
-        )
-    );
-  };
+
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -255,33 +305,37 @@ export default function VoiceToInvoiceScreen() {
         {/* INVOICES */}
         <FlatList
             data={invoices}
-            keyExtractor={(i) => i.id.toString()}
+            keyExtractor={(i) => i.jobId}
             contentContainerStyle={{ paddingHorizontal: 16 }}
             renderItem={({ item }) => (
                 <View style={styles.invoiceCard}>
                   <View style={styles.invoiceHeader}>
-                    <Text style={styles.invoiceTitle}>Invoice #{item.id}</Text>
+                    <Text style={styles.invoiceTitle}>
+                      {item.invoiceNumber ? `Invoice #${item.invoiceNumber}` : "Processing Invoice"}
+                    </Text>
                     <Text style={[styles.status, statusStyle[item.status]]}>
                       {item.status}
                     </Text>
                   </View>
-                  <Text style={styles.invoiceClient}>{item.client}</Text>
+                  <Text style={styles.invoiceClient}>
+                    {item.customerName || "Processing..."}
+                  </Text>
                   {item.amount && (
                       <Text style={styles.invoiceAmount}>Amount: {item.amount}</Text>
                   )}
                   <View style={styles.invoiceActions}>
                     <TouchableOpacity
-                        disabled={item.status !== "COMPLETED"}
+                        disabled={item.status !== "DONE"}
                         style={[
                           styles.primaryBtn,
-                          item.status !== "COMPLETED" && styles.disabled,
+                          item.status !== "DONE" && styles.disabled,
                         ]}
                     >
                       <Download size={16} color="white" />
                       <Text style={styles.btnText}>PDF</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        disabled={item.status !== "COMPLETED"}
+                        disabled={item.status !== "DONE"}
                         style={styles.secondaryBtn}
                     >
                       <Eye size={16} color="#e5e7eb" />
@@ -321,10 +375,11 @@ export default function VoiceToInvoiceScreen() {
 
 /* ---------------- STYLES ---------------- */
 
-const statusStyle = {
+const statusStyle: Record<JobStatus, { color: string }> = {
   PENDING: { color: "#ca8a04" },
   RUNNING: { color: "#2563eb" },
-  COMPLETED: { color: "#16a34a" },
+  DONE: { color: "#16a34a" },
+  FAILED: { color: "#dc2626" },
 };
 
 const styles = StyleSheet.create({
