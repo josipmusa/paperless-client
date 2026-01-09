@@ -10,8 +10,10 @@ import {
   PanResponder,
   Alert,
   Linking,
+  Vibration,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Toast from 'react-native-root-toast';
 import {
   Mic,
   Menu,
@@ -47,6 +49,7 @@ export default function VoiceToInvoiceScreen() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [completedInvoiceId, setCompletedInvoiceId] = useState<string | null>(null);
+  const [isGettingReady, setIsGettingReady] = useState(false);
   const isStartingRef = useRef(false);
   const shouldCancelStartRef = useRef(false);
 
@@ -55,6 +58,8 @@ export default function VoiceToInvoiceScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const cancelIndicatorOpacity = useRef(new Animated.Value(0)).current;
   const startY = useRef(0);
   const startX = useRef(0);
   const isCancelling = useRef(false);
@@ -193,11 +198,27 @@ export default function VoiceToInvoiceScreen() {
 
     isStartingRef.current = true;
     shouldCancelStartRef.current = false;
+    setIsGettingReady(true);
+
+    // "Get Ready" pulse animation
+    Animated.sequence([
+      Animated.timing(pulseAnim, {
+        toValue: 1.1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(pulseAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
     try {
       const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
         isStartingRef.current = false;
+        setIsGettingReady(false);
         return;
       }
 
@@ -209,6 +230,7 @@ export default function VoiceToInvoiceScreen() {
       // User released before we finished setup
       if (shouldCancelStartRef.current) {
         isStartingRef.current = false;
+        setIsGettingReady(false);
         return;
       }
 
@@ -218,6 +240,7 @@ export default function VoiceToInvoiceScreen() {
       setTimeout(() => {
         if (shouldCancelStartRef.current) {
           isStartingRef.current = false;
+          setIsGettingReady(false);
           return;
         }
 
@@ -225,6 +248,10 @@ export default function VoiceToInvoiceScreen() {
         recordingStartTime.current = Date.now();
         recordingStarted.current = true;
         isStartingRef.current = false;
+        setIsGettingReady(false);
+
+        // Vibration feedback on start
+        Vibration.vibrate(50);
 
         setIsRecording(true);
         Animated.spring(scaleAnim, {
@@ -235,6 +262,7 @@ export default function VoiceToInvoiceScreen() {
     } catch (error) {
       isStartingRef.current = false;
       recordingStarted.current = false;
+      setIsGettingReady(false);
       console.error("Failed to start recording:", error);
     }
   };
@@ -245,6 +273,7 @@ export default function VoiceToInvoiceScreen() {
     if (isStartingRef.current && !recordingStarted.current) {
       shouldCancelStartRef.current = true;
       isStartingRef.current = false;
+      setIsGettingReady(false);
       return;
     }
 
@@ -257,6 +286,16 @@ export default function VoiceToInvoiceScreen() {
     recordingStarted.current = false;
     setIsRecording(false);
 
+    // Vibration feedback on stop
+    Vibration.vibrate(50);
+
+    // Reset cancel indicator
+    Animated.timing(cancelIndicatorOpacity, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
@@ -268,6 +307,25 @@ export default function VoiceToInvoiceScreen() {
 
     // 🚫 Discard short or cancelled recordings
     if (duration < 500 || cancelled) {
+      if (cancelled) {
+        Toast.show('Recording cancelled', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
+      } else if (duration < 500) {
+        Toast.show('Recording too short', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#ef4444',
+          textColor: '#ffffff',
+        });
+      }
       return;
     }
 
@@ -410,6 +468,7 @@ export default function VoiceToInvoiceScreen() {
     onPanResponderGrant: async (_, gesture) => {
       startY.current = gesture.y0;
       startX.current = gesture.x0;
+      isCancelling.current = false;
       await startRecording();
     },
     onPanResponderMove: (_, gesture) => {
@@ -418,9 +477,25 @@ export default function VoiceToInvoiceScreen() {
       
       // Cancel if sliding up or to the side
       if (verticalDistance > 80 || horizontalDistance > 80) {
-        isCancelling.current = true;
+        if (!isCancelling.current) {
+          isCancelling.current = true;
+          // Fade in cancel indicator
+          Animated.timing(cancelIndicatorOpacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        }
       } else {
-        isCancelling.current = false;
+        if (isCancelling.current) {
+          isCancelling.current = false;
+          // Fade out cancel indicator
+          Animated.timing(cancelIndicatorOpacity, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        }
       }
     },
     onPanResponderRelease: () => {
@@ -442,7 +517,11 @@ export default function VoiceToInvoiceScreen() {
         <View style={styles.card}>
           <Text style={styles.title}>Create New Invoice</Text>
           <Text style={styles.subtitle}>
-            {isProcessing ? "Processing invoice..." : "Press and hold to record"}
+            {isProcessing 
+              ? "Processing invoice..." 
+              : isGettingReady 
+              ? "Get ready..." 
+              : "Press and hold to record"}
           </Text>
 
           {isRecording && (
@@ -457,8 +536,14 @@ export default function VoiceToInvoiceScreen() {
               style={[
                 styles.micButton,
                 {
-                  backgroundColor: isRecording ? "#dc2626" : "#2563eb",
-                  transform: [{ scale: scaleAnim }],
+                  backgroundColor: isRecording 
+                    ? "#dc2626" 
+                    : isGettingReady 
+                    ? "#f59e0b" 
+                    : "#2563eb",
+                  transform: [
+                    { scale: isGettingReady ? pulseAnim : scaleAnim }
+                  ],
                   opacity: isProcessing ? 0.5 : 1,
                 },
               ]}
@@ -466,7 +551,19 @@ export default function VoiceToInvoiceScreen() {
             <Mic size={36} color="white" />
           </Animated.View>
 
-          <Text style={styles.helperText}>
+          <Animated.View
+            style={[
+              styles.cancelIndicator,
+              { opacity: cancelIndicatorOpacity }
+            ]}
+          >
+            <Text style={styles.cancelText}>← Slide to cancel</Text>
+          </Animated.View>
+
+          <Text style={[
+            styles.helperText,
+            isCancelling.current && { opacity: 0.3 }
+          ]}>
             Hold to record • Slide to cancel
           </Text>
 
@@ -638,6 +735,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginVertical: 16,
+  },
+  cancelIndicator: {
+    position: "absolute",
+    top: "50%",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    marginTop: 60,
+  },
+  cancelText: {
+    color: "#ef4444",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   helperText: { textAlign: "center", color: "#94a3b8", fontSize: 12 },
   tipBox: {
