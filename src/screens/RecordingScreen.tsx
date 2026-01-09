@@ -9,6 +9,7 @@ import {
   Animated,
   PanResponder,
   Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -387,6 +388,22 @@ export default function VoiceToInvoiceScreen() {
     }
   };
 
+  const viewPdf = async (pdfUrl: string, invoiceNumber: string) => {
+    try {
+      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+      
+      const canOpen = await Linking.canOpenURL(uri);
+      if (canOpen) {
+        await Linking.openURL(uri);
+      } else {
+        Alert.alert('Unable to open PDF', 'No app available to view PDFs.');
+      }
+    } catch (error) {
+      console.error('Failed to open PDF:', error);
+      Alert.alert('Error', 'Failed to open PDF. Please try again.');
+    }
+  };
+
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -473,7 +490,7 @@ export default function VoiceToInvoiceScreen() {
             renderItem={({ item }) => (
                 <View style={styles.invoiceCard}>
                   <View style={styles.invoiceHeader}>
-                    <Text style={styles.invoiceTitle}>
+                    <Text style={styles.invoiceTitle} numberOfLines={1} ellipsizeMode="middle">
                       {item.invoiceNumber ? `Invoice #${item.invoiceNumber}` : "Processing Invoice"}
                     </Text>
                     <Text style={[styles.status, statusStyle[item.status]]}>
@@ -505,8 +522,8 @@ export default function VoiceToInvoiceScreen() {
                         ]}
                         onPress={() => item.pdfDownloadUrl && item.invoiceNumber && downloadPdf(item.pdfDownloadUrl, item.invoiceNumber)}
                     >
-                      <Download size={16} color="white" />
-                      <Text style={styles.btnText}>PDF</Text>
+                      <Download size={18} color="white" />
+                      <Text style={styles.btnText}>Download PDF</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         disabled={item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl}
@@ -516,16 +533,19 @@ export default function VoiceToInvoiceScreen() {
                         ]}
                         onPress={() => item.pdfDownloadUrl && item.invoiceNumber && sharePdf(item.pdfDownloadUrl, item.invoiceNumber)}
                     >
-                      <Share2 size={16} color="white" />
+                      <Share2 size={18} color="white" />
+                      <Text style={styles.btnText}>Share invoice</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        disabled={item.status !== "DONE" || item.fetchFailed}
+                        disabled={item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl}
                         style={[
-                          styles.secondaryBtn,
-                          (item.status !== "DONE" || item.fetchFailed) && styles.disabled,
+                          styles.viewBtn,
+                          (item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl) && styles.disabled,
                         ]}
+                        onPress={() => item.pdfDownloadUrl && item.invoiceNumber && viewPdf(item.pdfDownloadUrl, item.invoiceNumber)}
                     >
-                      <Eye size={16} color="#e5e7eb" />
+                      <Eye size={18} color="white" />
+                      <Text style={styles.btnText}>View</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -638,8 +658,15 @@ const styles = StyleSheet.create({
   invoiceHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
   },
-  invoiceTitle: { fontWeight: "600", color: "#f1f5f9" },
+  invoiceTitle: { 
+    fontWeight: "600", 
+    color: "#f1f5f9",
+    flex: 1,
+    flexShrink: 1,
+  },
   status: { fontSize: 12, fontWeight: "600" },
   invoiceClient: { color: "#94a3b8", marginTop: 4 },
   invoiceAmount: { marginTop: 8, fontWeight: "600", color: "#f1f5f9" },
@@ -659,18 +686,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: 12,
     gap: 8,
+    flexWrap: "wrap",
   },
   primaryBtn: {
     flexDirection: "row",
     gap: 6,
     backgroundColor: "#2563eb",
-    padding: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 10,
     alignItems: "center",
   },
   shareBtn: {
-    padding: 10,
+    flexDirection: "row",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     backgroundColor: "#16a34a",
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  viewBtn: {
+    flexDirection: "row",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#7c3aed",
     borderRadius: 10,
     alignItems: "center",
   },
@@ -679,7 +720,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#334155",
     borderRadius: 10,
   },
-  btnText: { color: "white", fontWeight: "600" },
+  btnText: { color: "white", fontWeight: "600", fontSize: 14 },
   disabled: { opacity: 0.4 },
   modalOverlay: {
     flex: 1,
