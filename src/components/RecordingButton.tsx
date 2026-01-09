@@ -68,6 +68,8 @@ export function RecordingButton({
       ).start();
     } else {
       recordingPulseAnim.setValue(1);
+      // Reset scale animation when not recording
+      scaleAnim.setValue(1);
     }
   }, [isRecording]);
 
@@ -90,6 +92,8 @@ export function RecordingButton({
       ).start();
     } else {
       arrowSlideAnim.setValue(0);
+      // Reset cancel indicator when not recording
+      cancelIndicatorOpacity.setValue(0);
     }
   }, [isRecording]);
 
@@ -126,8 +130,16 @@ export function RecordingButton({
       }
     },
     onPanResponderRelease: () => {
-      onStopRecording(isCancelling.current);
+      const wasCancelling = isCancelling.current;
+      onStopRecording(wasCancelling);
       isCancelling.current = false;
+      
+      // Reset cancel indicator
+      Animated.timing(cancelIndicatorOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
     },
   });
 
