@@ -27,10 +27,12 @@ import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSo
 
 type Invoice = {
   jobId: string;
+  invoiceId?: string;
   invoiceNumber?: string;
   customerName?: string;
   amount?: string;
   status: JobStatus;
+  fetchFailed?: boolean;
 };
 
 export default function VoiceToInvoiceScreen() {
@@ -49,7 +51,8 @@ export default function VoiceToInvoiceScreen() {
   const startY = useRef(0);
   const startX = useRef(0);
   const isCancelling = useRef(false);
-  const recordingStartTime = useRef(0);
+  const recordingStartTime = useRef<number>(0);
+  const recordingStarted = useRef(false);
 
   useEffect(() => {
     if (isRecording) {
@@ -102,9 +105,11 @@ export default function VoiceToInvoiceScreen() {
               if (inv.jobId === update.jobId) {
                 return {
                   ...inv,
+                  invoiceId: update.resultRef,
                   invoiceNumber: invoiceData.invoiceNumber,
                   customerName: invoiceData.customerName,
                   amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                  fetchFailed: false,
                 };
               }
               return inv;
@@ -114,9 +119,36 @@ export default function VoiceToInvoiceScreen() {
           setCompletedInvoiceId(update.resultRef);
           setIsProcessing(false);
           setShowSuccess(true);
+        } else {
+          // Invoice data not available yet
+          setInvoices((prev) =>
+            prev.map((inv) => {
+              if (inv.jobId === update.jobId) {
+                return {
+                  ...inv,
+                  invoiceId: update.resultRef,
+                  fetchFailed: true,
+                };
+              }
+              return inv;
+            })
+          );
+          setIsProcessing(false);
         }
       } catch (error) {
         console.error("Failed to fetch invoice information:", error);
+        setInvoices((prev) =>
+          prev.map((inv) => {
+            if (inv.jobId === update.jobId) {
+              return {
+                ...inv,
+                invoiceId: update.resultRef,
+                fetchFailed: true,
+              };
+            }
+            return inv;
+          })
+        );
         setIsProcessing(false);
       }
     } else if (update.status === "FAILED") {
@@ -144,10 +176,11 @@ export default function VoiceToInvoiceScreen() {
       });
 
       // Start recording
-      await recorder.prepareToRecordAsync()
+      await recorder.prepareToRecordAsync();
       recorder.record();
 
       recordingStartTime.current = Date.now();
+      recordingStarted.current = true;
       setIsRecording(true);
       Animated.spring(scaleAnim, {
         toValue: 1.15,
@@ -155,14 +188,21 @@ export default function VoiceToInvoiceScreen() {
       }).start();
     } catch (error) {
       console.error("Failed to start recording:", error);
+      recordingStarted.current = false;
       Alert.alert("Error", "Failed to start recording. Please try again.");
     }
   };
 
   const stopRecording = async (cancelled: boolean) => {
+    // Check if recording actually started
+    if (!recordingStarted.current) {
+      return;
+    }
+
     const recordingDuration = Date.now() - recordingStartTime.current;
     
     setIsRecording(false);
+    recordingStarted.current = false;
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
@@ -170,11 +210,13 @@ export default function VoiceToInvoiceScreen() {
 
     // Ignore accidental taps (less than 500ms)
     if (recordingDuration < 500) {
+      console.log("Recording too short, ignoring:", recordingDuration);
       await recorder.stop();
       return;
     }
 
     if (cancelled) {
+      console.log("Recording cancelled by user");
       await recorder.stop();
       return;
     }
@@ -223,6 +265,34 @@ export default function VoiceToInvoiceScreen() {
     }
   };
 
+  const retryFetchInvoice = async (jobId: string, invoiceId: string) => {
+    try {
+      const invoiceData = await getInvoiceInformation(invoiceId);
+      
+      if (invoiceData) {
+        setInvoices((prev) =>
+          prev.map((inv) => {
+            if (inv.jobId === jobId) {
+              return {
+                ...inv,
+                invoiceNumber: invoiceData.invoiceNumber,
+                customerName: invoiceData.customerName,
+                amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                fetchFailed: false,
+              };
+            }
+            return inv;
+          })
+        );
+        setShowSuccess(true);
+      } else {
+        Alert.alert("Error", "Invoice information is not available yet. Please try again later.");
+      }
+    } catch (error) {
+      console.error("Failed to retry fetch invoice:", error);
+      Alert.alert("Error", "Failed to fetch invoice information. Please try again.");
+    }
+  };
 
 
   const panResponder = PanResponder.create({
@@ -323,20 +393,33 @@ export default function VoiceToInvoiceScreen() {
                   {item.amount && (
                       <Text style={styles.invoiceAmount}>Amount: {item.amount}</Text>
                   )}
+                  
+                  {item.fetchFailed && item.invoiceId && (
+                    <TouchableOpacity 
+                      style={styles.retryBtn}
+                      onPress={() => retryFetchInvoice(item.jobId, item.invoiceId!)}
+                    >
+                      <Text style={styles.retryBtnText}>Retry Fetch Invoice</Text>
+                    </TouchableOpacity>
+                  )}
+                  
                   <View style={styles.invoiceActions}>
                     <TouchableOpacity
-                        disabled={item.status !== "DONE"}
+                        disabled={item.status !== "DONE" || item.fetchFailed}
                         style={[
                           styles.primaryBtn,
-                          item.status !== "DONE" && styles.disabled,
+                          (item.status !== "DONE" || item.fetchFailed) && styles.disabled,
                         ]}
                     >
                       <Download size={16} color="white" />
                       <Text style={styles.btnText}>PDF</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        disabled={item.status !== "DONE"}
-                        style={styles.secondaryBtn}
+                        disabled={item.status !== "DONE" || item.fetchFailed}
+                        style={[
+                          styles.secondaryBtn,
+                          (item.status !== "DONE" || item.fetchFailed) && styles.disabled,
+                        ]}
                     >
                       <Eye size={16} color="#e5e7eb" />
                     </TouchableOpacity>
@@ -435,6 +518,18 @@ const styles = StyleSheet.create({
   status: { fontSize: 12, fontWeight: "600" },
   invoiceClient: { color: "#94a3b8", marginTop: 4 },
   invoiceAmount: { marginTop: 8, fontWeight: "600", color: "#f1f5f9" },
+  retryBtn: {
+    backgroundColor: "#ca8a04",
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  retryBtnText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+  },
   invoiceActions: {
     flexDirection: "row",
     marginTop: 12,
