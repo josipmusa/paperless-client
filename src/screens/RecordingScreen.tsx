@@ -11,6 +11,7 @@ import {
   Alert,
   Linking,
   Vibration,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from 'react-native-root-toast';
@@ -24,6 +25,7 @@ import {
   Bell,
   CheckCircle,
   Share2,
+  Loader2,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import {File, Paths} from 'expo-file-system';
@@ -60,11 +62,32 @@ export default function VoiceToInvoiceScreen() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cancelIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const processingSpinAnim = useRef(new Animated.Value(0)).current;
   const startY = useRef(0);
   const startX = useRef(0);
   const isCancelling = useRef(false);
   const recordingStartTime = useRef<number>(0);
   const recordingStarted = useRef(false);
+
+  // Spinning animation for processing state
+  useEffect(() => {
+    if (isProcessing) {
+      Animated.loop(
+        Animated.timing(processingSpinAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      processingSpinAnim.setValue(0);
+    }
+  }, [isProcessing]);
+
+  const spinInterpolate = processingSpinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   useEffect(() => {
     if (isRecording) {
@@ -504,6 +527,56 @@ export default function VoiceToInvoiceScreen() {
     },
   });
 
+  // Pulsing Dot Component for status indication
+  const PulsingDot = ({ status }: { status: JobStatus }) => {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    useEffect(() => {
+      if (status === "PENDING" || status === "RUNNING") {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, {
+              toValue: 0.3,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+      }
+      return () => pulseAnim.setValue(1);
+    }, [status]);
+
+    const getColor = () => {
+      switch (status) {
+        case "PENDING":
+          return "#ca8a04";
+        case "RUNNING":
+          return "#2563eb";
+        case "DONE":
+          return "#16a34a";
+        case "FAILED":
+          return "#dc2626";
+      }
+    };
+
+    return (
+      <Animated.View
+        style={[
+          styles.statusDot,
+          { 
+            backgroundColor: getColor(),
+            opacity: status === "DONE" || status === "FAILED" ? 1 : pulseAnim,
+          }
+        ]}
+      />
+    );
+  };
+
   return (
       <SafeAreaView style={styles.container} edges={['top']}>
         {/* HEADER */}
@@ -516,13 +589,20 @@ export default function VoiceToInvoiceScreen() {
         {/* RECORD CARD */}
         <View style={styles.card}>
           <Text style={styles.title}>Create New Invoice</Text>
-          <Text style={styles.subtitle}>
-            {isProcessing 
-              ? "Processing invoice..." 
-              : isGettingReady 
-              ? "Get ready..." 
-              : "Press and hold to record"}
-          </Text>
+          
+          {/* Subtitle or Processing Indicator */}
+          {isProcessing ? (
+            <View style={styles.processingContainer}>
+              <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
+                <Loader2 size={20} color="#3b82f6" />
+              </Animated.View>
+              <Text style={styles.processingText}>Processing invoice...</Text>
+            </View>
+          ) : (
+            <Text style={styles.subtitle}>
+              {isGettingReady ? "Get ready..." : "Press and hold to record"}
+            </Text>
+          )}
 
           <View style={styles.recordingArea}>
             <View style={styles.timerContainer}>
@@ -534,7 +614,7 @@ export default function VoiceToInvoiceScreen() {
             </View>
 
             <Animated.View
-                {...panResponder.panHandlers}
+                {...(isProcessing ? {} : panResponder.panHandlers)}
                 style={[
                   styles.micButton,
                   {
@@ -546,9 +626,10 @@ export default function VoiceToInvoiceScreen() {
                     transform: [
                       { scale: isGettingReady ? pulseAnim : scaleAnim }
                     ],
-                    opacity: isProcessing ? 0.5 : 1,
+                    opacity: isProcessing ? 0.4 : 1,
                   },
                 ]}
+                pointerEvents={isProcessing ? "none" : "auto"}
             >
               <Mic size={36} color="white" />
               
@@ -591,9 +672,12 @@ export default function VoiceToInvoiceScreen() {
             renderItem={({ item }) => (
                 <View style={styles.invoiceCard}>
                   <View style={styles.invoiceHeader}>
-                    <Text style={styles.invoiceTitle} numberOfLines={1} ellipsizeMode="middle">
-                      {item.invoiceNumber ? `Invoice #${item.invoiceNumber}` : "Processing Invoice"}
-                    </Text>
+                    <View style={styles.invoiceTitleContainer}>
+                      <PulsingDot status={item.status} />
+                      <Text style={styles.invoiceTitle} numberOfLines={1} ellipsizeMode="middle">
+                        {item.invoiceNumber ? `Invoice #${item.invoiceNumber}` : "Processing Invoice"}
+                      </Text>
+                    </View>
                     <Text style={[styles.status, statusStyle[item.status]]}>
                       {item.status}
                     </Text>
@@ -730,6 +814,18 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: "600", textAlign: "center", color: "#f1f5f9" },
   subtitle: { textAlign: "center", color: "#94a3b8", marginBottom: 12 },
+  processingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  processingText: {
+    color: "#3b82f6",
+    fontSize: 14,
+    fontWeight: "500",
+  },
   recordingArea: {
     alignItems: "center",
     minHeight: 140,
@@ -796,6 +892,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     gap: 8,
+  },
+  invoiceTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    flexShrink: 1,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   invoiceTitle: { 
     fontWeight: "600", 
