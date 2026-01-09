@@ -42,7 +42,9 @@ export default function VoiceToInvoiceScreen() {
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const startY = useRef(0);
+  const startX = useRef(0);
   const isCancelling = useRef(false);
+  const recordingStartTime = useRef(0);
 
   useEffect(() => {
     if (isRecording) {
@@ -60,6 +62,7 @@ export default function VoiceToInvoiceScreen() {
   const startRecording = () => {
     if (isProcessing) return;
 
+    recordingStartTime.current = Date.now();
     setIsRecording(true);
     Animated.spring(scaleAnim, {
       toValue: 1.15,
@@ -68,11 +71,18 @@ export default function VoiceToInvoiceScreen() {
   };
 
   const stopRecording = (cancelled: boolean) => {
+    const recordingDuration = Date.now() - recordingStartTime.current;
+    
     setIsRecording(false);
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
     }).start();
+
+    // Ignore accidental taps (less than 500ms)
+    if (recordingDuration < 500) {
+      return;
+    }
 
     if (cancelled) return;
 
@@ -114,10 +124,15 @@ export default function VoiceToInvoiceScreen() {
     onStartShouldSetPanResponder: () => true,
     onPanResponderGrant: (_, gesture) => {
       startY.current = gesture.y0;
+      startX.current = gesture.x0;
       startRecording();
     },
     onPanResponderMove: (_, gesture) => {
-      if (startY.current - gesture.moveY > 80) {
+      const horizontalDistance = Math.abs(gesture.moveX - startX.current);
+      const verticalDistance = startY.current - gesture.moveY;
+      
+      // Cancel if sliding up or to the side
+      if (verticalDistance > 80 || horizontalDistance > 80) {
         isCancelling.current = true;
       } else {
         isCancelling.current = false;
@@ -134,7 +149,7 @@ export default function VoiceToInvoiceScreen() {
         {/* HEADER */}
         <View style={styles.header}>
           <Menu size={24} color="#e5e7eb" />
-          <Text style={styles.headerTitle}>Voice to Invoice</Text>
+          <Text style={styles.headerTitle}>Paperless</Text>
           <Settings size={24} color="#e5e7eb" />
         </View>
 
@@ -167,7 +182,7 @@ export default function VoiceToInvoiceScreen() {
           </Animated.View>
 
           <Text style={styles.helperText}>
-            Hold to record • Release to send
+            Hold to record • Slide to cancel
           </Text>
 
           {/* TIPS */}
@@ -223,8 +238,16 @@ export default function VoiceToInvoiceScreen() {
 
         {/* SUCCESS MODAL */}
         <Modal visible={showSuccess} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modal}>
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1}
+            onPress={() => setShowSuccess(false)}
+          >
+            <TouchableOpacity 
+              style={styles.modal}
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
               <CheckCircle size={64} color="#16a34a" />
               <Text style={styles.modalTitle}>Invoice Created!</Text>
               <TouchableOpacity
@@ -234,8 +257,8 @@ export default function VoiceToInvoiceScreen() {
                 <Download size={16} color="white" />
                 <Text style={styles.btnText}>Download PDF</Text>
               </TouchableOpacity>
-            </View>
-          </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </Modal>
       </SafeAreaView>
   );
