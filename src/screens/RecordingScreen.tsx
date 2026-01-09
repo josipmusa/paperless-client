@@ -20,8 +20,11 @@ import {
   Info,
   Bell,
   CheckCircle,
+  Share2,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
+import {File, Paths} from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { createInvoiceFromVoice, getInvoiceInformation, getInvoices } from "../api/invoiceApi";
 import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSocket";
 
@@ -33,6 +36,7 @@ type Invoice = {
   amount?: string;
   status: JobStatus;
   fetchFailed?: boolean;
+  pdfDownloadUrl?: string;
 };
 
 export default function VoiceToInvoiceScreen() {
@@ -79,6 +83,7 @@ export default function VoiceToInvoiceScreen() {
         customerName: invoice.customerName,
         amount: `$${invoice.totalAmount.toFixed(2)}`,
         status: "DONE",
+        pdfDownloadUrl: invoice.pdfDownloadUrl,
       }));
       setInvoices(recentInvoices);
     } catch (error) {
@@ -132,6 +137,7 @@ export default function VoiceToInvoiceScreen() {
                   customerName: invoiceData.customerName,
                   amount: `$${invoiceData.totalAmount.toFixed(2)}`,
                   fetchFailed: false,
+                  pdfDownloadUrl: invoiceData.pdfDownloadUrl,
                 };
               }
               return inv;
@@ -326,6 +332,62 @@ export default function VoiceToInvoiceScreen() {
   };
 
 
+  const getInvoicePdf = async (pdfUrl: string, invoiceNumber: string) => {
+    const fileName = `Invoice_${invoiceNumber}.pdf`;
+    const fileUri = Paths.document.uri + fileName;
+
+    // If already downloaded, reuse it
+    const file = new File(fileUri);
+    if (file.exists) {
+      return fileUri;
+    }
+    const result = await File.downloadFileAsync(pdfUrl, file)
+
+    if (!result.exists || result.size <= 0) {
+      throw new Error('Download failed');
+    }
+
+    return result.uri;
+  };
+
+  const downloadPdf = async (pdfUrl: string, invoiceNumber: string) => {
+    try {
+      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+
+      Alert.alert(
+          'Invoice saved',
+          `Invoice ${invoiceNumber} is available offline.`,
+          [
+            { text: 'OK' }
+          ]
+      );
+    } catch (error) {
+      console.error("Failed to download PDF:", error);
+      Alert.alert("Error", "Failed to download PDF. Please try again.");
+    }
+  };
+
+  const sharePdf = async (pdfUrl: string, invoiceNumber: string) => {
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Sharing unavailable', 'Your device does not support sharing.');
+        return;
+      }
+
+      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Share Invoice ${invoiceNumber}`,
+      });
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Share failed', 'Could not share the invoice.');
+    }
+  };
+
+
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onPanResponderGrant: async (_, gesture) => {
@@ -436,14 +498,25 @@ export default function VoiceToInvoiceScreen() {
                   
                   <View style={styles.invoiceActions}>
                     <TouchableOpacity
-                        disabled={item.status !== "DONE" || item.fetchFailed}
+                        disabled={item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl}
                         style={[
                           styles.primaryBtn,
-                          (item.status !== "DONE" || item.fetchFailed) && styles.disabled,
+                          (item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl) && styles.disabled,
                         ]}
+                        onPress={() => item.pdfDownloadUrl && item.invoiceNumber && downloadPdf(item.pdfDownloadUrl, item.invoiceNumber)}
                     >
                       <Download size={16} color="white" />
                       <Text style={styles.btnText}>PDF</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        disabled={item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl}
+                        style={[
+                          styles.shareBtn,
+                          (item.status !== "DONE" || item.fetchFailed || !item.pdfDownloadUrl) && styles.disabled,
+                        ]}
+                        onPress={() => item.pdfDownloadUrl && item.invoiceNumber && sharePdf(item.pdfDownloadUrl, item.invoiceNumber)}
+                    >
+                      <Share2 size={16} color="white" />
                     </TouchableOpacity>
                     <TouchableOpacity
                         disabled={item.status !== "DONE" || item.fetchFailed}
@@ -473,13 +546,34 @@ export default function VoiceToInvoiceScreen() {
             >
               <CheckCircle size={64} color="#16a34a" />
               <Text style={styles.modalTitle}>Invoice Created!</Text>
-              <TouchableOpacity
-                  style={styles.primaryBtn}
-                  onPress={() => setShowSuccess(false)}
-              >
-                <Download size={16} color="white" />
-                <Text style={styles.btnText}>Download PDF</Text>
-              </TouchableOpacity>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                    style={styles.primaryBtn}
+                    onPress={() => {
+                      const invoice = invoices.find(inv => inv.invoiceId === completedInvoiceId);
+                      if (invoice?.pdfDownloadUrl && invoice?.invoiceNumber) {
+                        downloadPdf(invoice.pdfDownloadUrl, invoice.invoiceNumber);
+                      }
+                    }}
+                    disabled={!invoices.find(inv => inv.invoiceId === completedInvoiceId)?.pdfDownloadUrl}
+                >
+                  <Download size={16} color="white" />
+                  <Text style={styles.btnText}>Download PDF</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={styles.shareBtn}
+                    onPress={() => {
+                      const invoice = invoices.find(inv => inv.invoiceId === completedInvoiceId);
+                      if (invoice?.pdfDownloadUrl && invoice?.invoiceNumber) {
+                        sharePdf(invoice.pdfDownloadUrl, invoice.invoiceNumber);
+                      }
+                    }}
+                    disabled={!invoices.find(inv => inv.invoiceId === completedInvoiceId)?.pdfDownloadUrl}
+                >
+                  <Share2 size={16} color="white" />
+                  <Text style={styles.btnText}>Share</Text>
+                </TouchableOpacity>
+              </View>
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
@@ -574,6 +668,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
+  shareBtn: {
+    padding: 10,
+    backgroundColor: "#16a34a",
+    borderRadius: 10,
+    alignItems: "center",
+  },
   secondaryBtn: {
     padding: 10,
     backgroundColor: "#334155",
@@ -595,4 +695,9 @@ const styles = StyleSheet.create({
     width: 280,
   },
   modalTitle: { fontSize: 18, fontWeight: "600", marginVertical: 12, color: "#f1f5f9" },
+  modalActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
 });
