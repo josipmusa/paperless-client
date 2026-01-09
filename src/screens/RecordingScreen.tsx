@@ -21,7 +21,7 @@ import {
   Bell,
   CheckCircle,
 } from "lucide-react-native";
-import { Audio } from "expo-audio";
+import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import { createInvoiceFromVoice } from "../api/invoiceApi";
 
 type InvoiceStatus = "PENDING" | "RUNNING" | "COMPLETED";
@@ -42,7 +42,8 @@ export default function VoiceToInvoiceScreen() {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const invoiceCounter = useRef(1248);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const startY = useRef(0);
@@ -68,46 +69,21 @@ export default function VoiceToInvoiceScreen() {
 
     try {
       // Request permissions
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
         Alert.alert("Permission Required", "Microphone access is needed to record audio.");
         return;
       }
 
       // Configure audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
       // Start recording
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        isMeteringEnabled: true,
-        android: {
-          extension: ".m4a",
-          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-          audioEncoder: Audio.AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: ".m4a",
-          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-          audioQuality: Audio.IOSAudioQuality.HIGH,
-          sampleRate: 44100,
-          numberOfChannels: 2,
-          bitRate: 128000,
-        },
-        web: {
-          mimeType: "audio/webm",
-          bitsPerSecond: 128000,
-        },
-      });
-
-      await recording.startAsync();
-      recordingRef.current = recording;
+      await recorder.prepareToRecordAsync()
+      recorder.record();
 
       recordingStartTime.current = Date.now();
       setIsRecording(true);
@@ -132,28 +108,19 @@ export default function VoiceToInvoiceScreen() {
 
     // Ignore accidental taps (less than 500ms)
     if (recordingDuration < 500) {
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        recordingRef.current = null;
-      }
+      await recorder.stop();
       return;
     }
 
     if (cancelled) {
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        recordingRef.current = null;
-      }
+      await recorder.stop();
       return;
     }
 
     // Stop recording and get URI
-    if (!recordingRef.current) return;
-
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
-      recordingRef.current = null;
+      await recorder.stop();
+      const uri = recorder.uri
 
       if (!uri) {
         Alert.alert("Error", "Failed to save recording.");
