@@ -244,14 +244,14 @@ export default function VoiceToInvoiceScreen() {
           return;
         }
 
+        // Vibration feedback BEFORE starting to record
+        Vibration.vibrate(50);
+
         recorder.record();
         recordingStartTime.current = Date.now();
         recordingStarted.current = true;
         isStartingRef.current = false;
         setIsGettingReady(false);
-
-        // Vibration feedback on start
-        Vibration.vibrate(50);
 
         setIsRecording(true);
         Animated.spring(scaleAnim, {
@@ -524,46 +524,50 @@ export default function VoiceToInvoiceScreen() {
               : "Press and hold to record"}
           </Text>
 
-          {isRecording && (
-              <Text style={styles.recordingText}>
-                Recording… {Math.floor(seconds / 60)}:
-                {(seconds % 60).toString().padStart(2, "0")}
-              </Text>
-          )}
+          <View style={styles.recordingArea}>
+            <View style={styles.timerContainer}>
+              {isRecording && (
+                <Text style={styles.recordingText}>
+                  {Math.floor(seconds / 60)}:{(seconds % 60).toString().padStart(2, "0")}
+                </Text>
+              )}
+            </View>
 
-          <Animated.View
-              {...panResponder.panHandlers}
-              style={[
-                styles.micButton,
-                {
-                  backgroundColor: isRecording 
-                    ? "#dc2626" 
-                    : isGettingReady 
-                    ? "#f59e0b" 
-                    : "#2563eb",
-                  transform: [
-                    { scale: isGettingReady ? pulseAnim : scaleAnim }
-                  ],
-                  opacity: isProcessing ? 0.5 : 1,
-                },
-              ]}
-          >
-            <Mic size={36} color="white" />
-          </Animated.View>
+            <Animated.View
+                {...panResponder.panHandlers}
+                style={[
+                  styles.micButton,
+                  {
+                    backgroundColor: isRecording 
+                      ? "#dc2626" 
+                      : isGettingReady 
+                      ? "#f59e0b" 
+                      : "#2563eb",
+                    transform: [
+                      { scale: isGettingReady ? pulseAnim : scaleAnim }
+                    ],
+                    opacity: isProcessing ? 0.5 : 1,
+                  },
+                ]}
+            >
+              <Mic size={36} color="white" />
+              
+              {/* Cancel swipe indicator - overlays on button */}
+              <Animated.View
+                style={[
+                  styles.swipeOverlay,
+                  { 
+                    opacity: cancelIndicatorOpacity,
+                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                  }
+                ]}
+              >
+                <Text style={styles.swipeText}>✕</Text>
+              </Animated.View>
+            </Animated.View>
+          </View>
 
-          <Animated.View
-            style={[
-              styles.cancelIndicator,
-              { opacity: cancelIndicatorOpacity }
-            ]}
-          >
-            <Text style={styles.cancelText}>← Slide to cancel</Text>
-          </Animated.View>
-
-          <Text style={[
-            styles.helperText,
-            isCancelling.current && { opacity: 0.3 }
-          ]}>
+          <Text style={styles.helperText}>
             Hold to record • Slide to cancel
           </Text>
 
@@ -726,34 +730,52 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: "600", textAlign: "center", color: "#f1f5f9" },
   subtitle: { textAlign: "center", color: "#94a3b8", marginBottom: 12 },
-  recordingText: { color: "#ef4444", textAlign: "center", marginBottom: 8 },
+  recordingArea: {
+    alignItems: "center",
+    minHeight: 140,
+  },
+  timerContainer: {
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  recordingText: { 
+    color: "#ef4444", 
+    textAlign: "center", 
+    fontSize: 18,
+    fontWeight: "600",
+    letterSpacing: 1,
+  },
   micButton: {
     width: 96,
     height: 96,
     borderRadius: 48,
-    alignSelf: "center",
     justifyContent: "center",
     alignItems: "center",
-    marginVertical: 16,
+    overflow: "hidden",
   },
-  cancelIndicator: {
+  swipeOverlay: {
     position: "absolute",
-    top: "50%",
+    top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
+    borderRadius: 48,
+    justifyContent: "center",
     alignItems: "center",
-    marginTop: 60,
   },
-  cancelText: {
-    color: "#ef4444",
-    fontSize: 16,
+  swipeText: {
+    color: "#ffffff",
+    fontSize: 32,
     fontWeight: "700",
-    textAlign: "center",
-    textShadowColor: "rgba(0, 0, 0, 0.75)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
-  helperText: { textAlign: "center", color: "#94a3b8", fontSize: 12 },
+  helperText: { 
+    textAlign: "center", 
+    color: "#94a3b8", 
+    fontSize: 12,
+    marginTop: 8,
+  },
   tipBox: {
     flexDirection: "row",
     backgroundColor: "#334155",
