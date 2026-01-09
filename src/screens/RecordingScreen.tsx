@@ -1,413 +1,446 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  Linking,
-} from 'react-native';
-import { useAudioRecorder, RecordingOptions, AudioModule, IOSOutputFormat, AudioQuality } from 'expo-audio';
-import { createInvoiceFromVoice, getInvoicePdfLink } from '../api/invoiceApi';
-import { useJobStore, initializeJobWebSocket, disconnectJobWebSocket } from '../store/jobStore';
-import { JobStatus } from '../websocket/jobWebSocket';
+import React, { useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, FlatList} from "react-native";
+import * as Haptics from "expo-haptics";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Toast from 'react-native-root-toast';
+import { Menu, Settings } from "lucide-react-native";
+import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
+import { createInvoiceFromVoice, getInvoiceInformation, getInvoices } from "../api/invoiceApi";
+import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSocket";
+import { RecordingButton } from "../components/RecordingButton";
+import { InvoiceCard } from "../components/InvoiceCard";
+import { InvoiceSuccessModal } from "../components/InvoiceSuccessModal";
+import { RecordingTips } from "../components/RecordingTips";
+import { usePdfOperations } from "../hooks/usePdfOperations";
 
-const recordingOptions: RecordingOptions = {
-  extension: '.m4a',
-  sampleRate: 44100,
-  numberOfChannels: 1,
-  bitRate: 128000,
-  android: {
-    extension: '.m4a',
-    outputFormat: 'mpeg4',
-    audioEncoder: 'aac',
-    sampleRate: 44100,
-  },
-  ios: {
-    extension: '.m4a',
-    outputFormat: IOSOutputFormat.MPEG4AAC,
-    audioQuality: AudioQuality.HIGH,
-    sampleRate: 44100,
-    linearPCMBitDepth: 16,
-    linearPCMIsBigEndian: false,
-    linearPCMIsFloat: false,
-  },
-  web: {
-    mimeType: 'audio/mp4',
-    bitsPerSecond: 128000,
-  },
+type Invoice = {
+  jobId: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  customerName?: string;
+  amount?: string;
+  status: JobStatus;
+  fetchFailed?: boolean;
+  pdfDownloadUrl?: string;
 };
 
-export default function RecordingScreen() {
+export default function VoiceToInvoiceScreen() {
   const [isRecording, setIsRecording] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [completedInvoiceId, setCompletedInvoiceId] = useState<string | null>(null);
+  const [isGettingReady, setIsGettingReady] = useState(false);
+  
+  const isStartingRef = useRef(false);
+  const shouldCancelStartRef = useRef(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingStartTime = useRef<number>(0);
+  const recordingStarted = useRef(false);
 
-  const audioRecorder = useAudioRecorder(recordingOptions);
+  const haptics = {
+    start: () =>
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
 
-  const currentJob = useJobStore((state) => state.currentJob);
-  const setCurrentJob = useJobStore((state) => state.setCurrentJob);
-  const clearCurrentJob = useJobStore((state) => state.clearCurrentJob);
+    stop: () =>
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+
+    cancel: () =>
+        Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Warning
+        ),
+  };
+  
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const { downloadPdf, sharePdf, viewPdf } = usePdfOperations();
 
   useEffect(() => {
-    initializeJobWebSocket();
+    if (isRecording) {
+      timerRef.current = setInterval(() => {
+        setSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      clearInterval(timerRef.current!);
+      setSeconds(0);
+    }
+
+    return () => clearInterval(timerRef.current!);
+  }, [isRecording]);
+
+  const fetchRecentInvoices = async () => {
+    try {
+      const invoiceData = await getInvoices();
+      const recentInvoices: Invoice[] = invoiceData.map((invoice) => ({
+        jobId: `existing-${invoice.invoiceNumber}`,
+        invoiceId: invoice.invoiceNumber,
+        invoiceNumber: invoice.invoiceNumber,
+        customerName: invoice.customerName,
+        amount: `$${invoice.totalAmount.toFixed(2)}`,
+        status: "DONE",
+        pdfDownloadUrl: invoice.pdfDownloadUrl,
+      }));
+      setInvoices(recentInvoices);
+    } catch (error) {
+      console.error("Failed to fetch recent invoices:", error);
+    }
+  };
+
+  useEffect(() => {
+    jobWebSocketService.connect();
+    const unsubscribe = jobWebSocketService.subscribe(handleJobUpdate);
+    fetchRecentInvoices();
+
     return () => {
-      disconnectJobWebSocket();
+      unsubscribe();
     };
   }, []);
 
-  useEffect(() => {
-    if (currentJob?.status === 'DONE' && currentJob.resultRef) {
-      fetchPdfLink(currentJob.resultRef);
-    } else if (currentJob?.status === 'FAILED') {
-      Alert.alert(
-        'Processing Failed',
-        'Failed to process your voice recording. Please try again.',
-        [{ text: 'OK', onPress: handleReset }]
-      );
-    }
-  }, [currentJob?.status]);
+  const handleJobUpdate = async (update: JobUpdate) => {
+    console.log("Received job update:", update);
 
-  const fetchPdfLink = async (invoiceId: string) => {
-    setIsLoadingPdf(true);
-    try {
-      const url = await getInvoicePdfLink(invoiceId);
-      setPdfUrl(url);
-    } catch (error) {
-      console.error('Failed to get PDF link:', error);
-      Alert.alert('Error', 'Failed to get invoice PDF. Please try again.');
-    } finally {
-      setIsLoadingPdf(false);
-    }
-  };
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        if (inv.jobId === update.jobId) {
+          return { ...inv, status: update.status };
+        }
+        return inv;
+      })
+    );
 
-  const handleViewPdf = async () => {
-    if (pdfUrl) {
-      await Linking.openURL(pdfUrl);
-    }
-  };
+    if (update.status === "DONE" && update.resultRef) {
+      try {
+        const invoiceData = await getInvoiceInformation(update.resultRef);
+        
+        if (invoiceData) {
+          setInvoices((prev) =>
+            prev.map((inv) => {
+              if (inv.jobId === update.jobId) {
+                return {
+                  ...inv,
+                  invoiceId: update.resultRef,
+                  invoiceNumber: invoiceData.invoiceNumber,
+                  customerName: invoiceData.customerName,
+                  amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                  fetchFailed: false,
+                  pdfDownloadUrl: invoiceData.pdfDownloadUrl,
+                };
+              }
+              return inv;
+            })
+          );
 
-  const handleReset = () => {
-    clearCurrentJob();
-    setPdfUrl(null);
+          setCompletedInvoiceId(update.resultRef);
+          setIsProcessing(false);
+          setShowSuccess(true);
+        } else {
+          setInvoices((prev) =>
+            prev.map((inv) => {
+              if (inv.jobId === update.jobId) {
+                return { ...inv, invoiceId: update.resultRef, fetchFailed: true };
+              }
+              return inv;
+            })
+          );
+          setIsProcessing(false);
+        }
+      } catch (error) {
+        console.error("Failed to fetch invoice information:", error);
+        setInvoices((prev) =>
+          prev.map((inv) => {
+            if (inv.jobId === update.jobId) {
+              return { ...inv, invoiceId: update.resultRef, fetchFailed: true };
+            }
+            return inv;
+          })
+        );
+        setIsProcessing(false);
+      }
+    } else if (update.status === "FAILED") {
+      await forceStopRecording();
+      setIsProcessing(false);
+      Toast.show('Failed to process recording', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
+      setInvoices((prev) => prev.filter((inv) => inv.jobId !== update.jobId));
+    }
   };
 
   const startRecording = async () => {
+    if (isProcessing || isStartingRef.current || isRecording) return;
+
+    isStartingRef.current = true;
+    shouldCancelStartRef.current = false;
+    setIsGettingReady(true);
+
+    haptics.start();
+
     try {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) {
-        Alert.alert('Permission Denied', 'Microphone permission is required to record audio.');
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        isStartingRef.current = false;
+        setIsGettingReady(false);
         return;
       }
 
-      await AudioModule.setAudioModeAsync({
+      await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
       });
 
-      audioRecorder.record();
-      setIsRecording(true);
-      setRecordingDuration(0);
+      if (shouldCancelStartRef.current) {
+        isStartingRef.current = false;
+        setIsGettingReady(false);
+        return;
+      }
 
-      intervalRef.current = setInterval(() => {
-        setRecordingDuration((prev) => prev + 1);
-      }, 1000);
+      await recorder.prepareToRecordAsync();
+
+      setTimeout(() => {
+        if (shouldCancelStartRef.current) {
+          isStartingRef.current = false;
+          setIsGettingReady(false);
+          return;
+        }
+
+        recorder.record();
+        recordingStartTime.current = Date.now();
+        recordingStarted.current = true;
+        isStartingRef.current = false;
+        setIsGettingReady(false);
+        setIsRecording(true);
+      }, 150);
     } catch (error) {
-      console.error('Failed to start recording:', error);
-      Alert.alert('Error', 'Failed to start recording. Please try again.');
+      isStartingRef.current = false;
+      recordingStarted.current = false;
+      setIsGettingReady(false);
+      console.error("Failed to start recording:", error);
     }
   };
 
-  const stopRecording = async () => {
+  const stopRecording = async (cancelled: boolean) => {
+    if (isStartingRef.current && !recordingStarted.current) {
+      shouldCancelStartRef.current = true;
+      isStartingRef.current = false;
+      setIsGettingReady(false);
+      haptics.cancel();
+      return;
+    }
+
+    if (!recordingStarted.current) return;
+
+    const duration = Date.now() - recordingStartTime.current;
+    recordingStarted.current = false;
+    setIsRecording(false);
+
+    haptics.stop();
+
     try {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      await recorder.stop();
+    } catch {}
 
-      setIsRecording(false);
-      await audioRecorder.stop();
-      
-      // Small delay to ensure URI is available
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      const uri = audioRecorder.uri;
-
-      if (uri) {
-        await uploadRecording(uri);
-      } else {
-        Alert.alert('Error', 'Recording file not found. Please try again.');
+    if (duration < 500 || cancelled) {
+      haptics.cancel();
+      if (cancelled) {
+        Toast.show('Recording cancelled', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
+      } else if (duration < 500) {
+        Toast.show('Recording too short', {
+          duration: Toast.durations.SHORT,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#ef4444',
+          textColor: '#ffffff',
+        });
       }
-    } catch (error) {
-      console.error('Failed to stop recording:', error);
-      Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      return;
     }
-  };
 
-  const uploadRecording = async (uri: string) => {
-    setIsUploading(true);
+    const uri = recorder.uri;
+    if (!uri) return;
+
+    setIsProcessing(true);
+
     try {
       const jobId = await createInvoiceFromVoice(uri);
-      setCurrentJob({ id: jobId, status: 'PENDING' });
-      setRecordingDuration(0);
-    } catch (error: any) {
-      console.error('Failed to upload recording:', error);
-      Alert.alert(
-        'Upload Failed',
-        error.response?.data?.message || 'Failed to upload recording. Please try again.'
-      );
-    } finally {
-      setIsUploading(false);
+      setInvoices((prev) => [
+        { jobId, customerName: "Processing...", status: "PENDING" },
+        ...prev.slice(0, 2),
+      ]);
+    } catch (e) {
+      await forceStopRecording();
+      setIsProcessing(false);
+      Toast.show('Failed to process recording', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
-  const getStatusText = (status: JobStatus): string => {
-    switch (status) {
-      case 'PENDING':
-        return 'Queued for processing...';
-      case 'RUNNING':
-        return 'Processing your recording...';
-      case 'DONE':
-        return 'Invoice created!';
-      case 'FAILED':
-        return 'Processing failed';
-      default:
-        return '';
+  const forceStopRecording = async () => {
+    if (recordingStarted.current || isStartingRef.current) {
+      recordingStarted.current = false;
+      isStartingRef.current = false;
+      setIsRecording(false);
+
+      haptics.cancel();
+
+      try {
+        await recorder.stop();
+      } catch {}
     }
   };
 
-  const getStatusColor = (status: JobStatus): string => {
-    switch (status) {
-      case 'PENDING':
-        return '#f39c12';
-      case 'RUNNING':
-        return '#3498db';
-      case 'DONE':
-        return '#27ae60';
-      case 'FAILED':
-        return '#e74c3c';
-      default:
-        return '#666';
+  const retryFetchInvoice = async (jobId: string, invoiceId: string) => {
+    try {
+      const invoiceData = await getInvoiceInformation(invoiceId);
+      
+      if (invoiceData) {
+        setInvoices((prev) =>
+          prev.map((inv) => {
+            if (inv.jobId === jobId) {
+              return {
+                ...inv,
+                invoiceNumber: invoiceData.invoiceNumber,
+                customerName: invoiceData.customerName,
+                amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                fetchFailed: false,
+              };
+            }
+            return inv;
+          })
+        );
+        setShowSuccess(true);
+      } else {
+        Toast.show('Invoice information is not available yet. Please try again later.', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
+      }
+    } catch (error) {
+      console.error("Failed to retry fetch invoice:", error);
+      Toast.show('Failed to fetch invoice information. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  const completedInvoice = invoices.find(inv => inv.invoiceId === completedInvoiceId);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Create Invoice</Text>
-      <Text style={styles.subtitle}>
-        Record a voice message describing the invoice details
-      </Text>
-
-      <View style={styles.recordingArea}>
-        <Text style={styles.duration}>{formatDuration(recordingDuration)}</Text>
-        
-        {isRecording && (
-          <View style={styles.recordingIndicator}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>Recording...</Text>
-          </View>
-        )}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* HEADER */}
+      <View style={styles.header}>
+        <Menu size={24} color="#e5e7eb" />
+        <Text style={styles.headerTitle}>Paperless</Text>
+        <Settings size={24} color="#e5e7eb" />
       </View>
 
-      {isUploading ? (
-        <View style={styles.uploadingContainer}>
-          <ActivityIndicator size="large" color="#3498db" />
-          <Text style={styles.uploadingText}>Uploading recording...</Text>
-        </View>
-      ) : isLoadingPdf ? (
-        <View style={styles.processingContainer}>
-          <ActivityIndicator size="large" color="#27ae60" />
-          <Text style={[styles.statusText, { color: '#27ae60' }]}>
-            Preparing your invoice...
-          </Text>
-        </View>
-      ) : pdfUrl ? (
-        <View style={styles.successContainer}>
-          <Text style={styles.successIcon}>✓</Text>
-          <Text style={styles.successText}>Invoice Ready!</Text>
-          <TouchableOpacity style={styles.viewPdfButton} onPress={handleViewPdf}>
-            <Text style={styles.viewPdfButtonText}>View PDF</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.newRecordingButton} onPress={handleReset}>
-            <Text style={styles.newRecordingButtonText}>Create Another Invoice</Text>
-          </TouchableOpacity>
-        </View>
-      ) : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING') ? (
-        <View style={styles.processingContainer}>
-          <ActivityIndicator size="large" color={getStatusColor(currentJob.status)} />
-          <Text style={[styles.statusText, { color: getStatusColor(currentJob.status) }]}>
-            {getStatusText(currentJob.status)}
-          </Text>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={[
-            styles.recordButton,
-            isRecording && styles.recordButtonActive,
-          ]}
-          onPress={isRecording ? stopRecording : startRecording}
-          activeOpacity={0.7}
-        >
-          <View
-            style={[
-              styles.recordButtonInner,
-              isRecording && styles.recordButtonInnerActive,
-            ]}
-          />
-        </TouchableOpacity>
-      )}
+      {/* RECORD CARD */}
+      <View style={styles.card}>
+        <Text style={styles.title}>Create New Invoice</Text>
+        
+        <RecordingButton
+          isRecording={isRecording}
+          isProcessing={isProcessing}
+          isGettingReady={isGettingReady}
+          seconds={seconds}
+          onStartRecording={startRecording}
+          onStopRecording={stopRecording}
+        />
 
-      <Text style={styles.hint}>
-        {pdfUrl
-          ? 'Your invoice is ready to view'
-          : currentJob && (currentJob.status === 'PENDING' || currentJob.status === 'RUNNING')
-            ? 'Please wait while we process your recording'
-          : isRecording
-            ? 'Tap to stop recording'
-            : 'Tap to start recording'}
-      </Text>
-    </View>
+        <RecordingTips />
+      </View>
+
+      {/* INVOICES */}
+      <FlatList
+        data={invoices}
+        keyExtractor={(i) => i.jobId}
+        contentContainerStyle={{ paddingHorizontal: 16 }}
+        renderItem={({ item }) => (
+          <InvoiceCard
+            {...item}
+            onRetryFetch={retryFetchInvoice}
+            onDownload={downloadPdf}
+            onShare={sharePdf}
+            onView={viewPdf}
+          />
+        )}
+      />
+
+      {/* SUCCESS MODAL */}
+      <InvoiceSuccessModal
+        visible={showSuccess}
+        onClose={() => setShowSuccess(false)}
+        onDownload={() => {
+          if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
+            downloadPdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+          }
+        }}
+        onShare={() => {
+          if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
+            sharePdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+          }
+        }}
+        canInteract={!!completedInvoice?.pdfDownloadUrl}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+  container: { 
+    flex: 1, 
+    backgroundColor: "#0f172a" 
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "#1e293b",
+    borderBottomWidth: 1,
+    borderColor: "#334155",
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 48,
+  headerTitle: { 
+    fontSize: 18, 
+    fontWeight: "600", 
+    color: "#f1f5f9" 
   },
-  recordingArea: {
-    alignItems: 'center',
-    marginBottom: 48,
+  card: {
+    margin: 16,
+    backgroundColor: "#1e293b",
+    borderRadius: 20,
+    padding: 16,
   },
-  duration: {
-    fontSize: 48,
-    fontWeight: '300',
-    color: '#333',
-    fontVariant: ['tabular-nums'],
-  },
-  recordingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#e74c3c',
-    marginRight: 8,
-  },
-  recordingText: {
-    fontSize: 16,
-    color: '#e74c3c',
-    fontWeight: '500',
-  },
-  recordButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#fff',
-    borderWidth: 4,
-    borderColor: '#e74c3c',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  recordButtonActive: {
-    borderColor: '#333',
-  },
-  recordButtonInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#e74c3c',
-  },
-  recordButtonInnerActive: {
-    width: 28,
-    height: 28,
-    borderRadius: 4,
-    backgroundColor: '#333',
-  },
-  hint: {
-    fontSize: 14,
-    color: '#999',
-  },
-  uploadingContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  uploadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#3498db',
-  },
-  processingContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  statusText: {
-    marginTop: 16,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  successContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  successIcon: {
-    fontSize: 48,
-    color: '#27ae60',
-    marginBottom: 16,
-  },
-  successText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#27ae60',
-    marginBottom: 24,
-  },
-  viewPdfButton: {
-    backgroundColor: '#3498db',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    marginBottom: 12,
-  },
-  viewPdfButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  newRecordingButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  newRecordingButtonText: {
-    color: '#3498db',
-    fontSize: 14,
+  title: { 
+    fontSize: 20, 
+    fontWeight: "600", 
+    textAlign: "center", 
+    color: "#f1f5f9" 
   },
 });
