@@ -1,357 +1,338 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  Alert,
-  ActivityIndicator,
-  Linking,
+  TouchableOpacity,
+  FlatList,
+  Modal,
   Animated,
-  Pressable,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+  PanResponder,
+} from "react-native";
 import {
-  useAudioRecorder,
-  RecordingOptions,
-  AudioModule,
-  IOSOutputFormat,
-  AudioQuality,
-} from 'expo-audio';
-import {
-  createInvoiceFromVoice,
-  getInvoicePdfLink,
-} from '../api/invoiceApi';
-import {
-  useJobStore,
-  initializeJobWebSocket,
-  disconnectJobWebSocket,
-} from '../store/jobStore';
+  Mic,
+  Menu,
+  Settings,
+  Download,
+  Eye,
+  Info,
+  Bell,
+  CheckCircle,
+} from "lucide-react-native";
 
-const HOLD_DELAY = 200;
-const CANCEL_THRESHOLD = -100;
+type InvoiceStatus = "PENDING" | "RUNNING" | "COMPLETED";
 
-type UiPhase = 'idle' | 'uploading' | 'processing' | 'done';
-
-const recordingOptions: RecordingOptions = {
-  extension: '.m4a',
-  sampleRate: 44100,
-  numberOfChannels: 1,
-  bitRate: 128000,
-  android: {
-    extension: '.m4a',
-    outputFormat: 'mpeg4',
-    audioEncoder: 'aac',
-    sampleRate: 44100,
-  },
-  ios: {
-    extension: '.m4a',
-    outputFormat: IOSOutputFormat.MPEG4AAC,
-    audioQuality: AudioQuality.HIGH,
-    sampleRate: 44100,
-    linearPCMBitDepth: 16,
-    linearPCMIsBigEndian: false,
-    linearPCMIsFloat: false,
-  },
-  web: {
-    mimeType: 'audio/mp4',
-    bitsPerSecond: 128000,
-  },
+type Invoice = {
+  id: number;
+  client: string;
+  amount?: string;
+  status: InvoiceStatus;
 };
 
-export default function RecordingScreen() {
-  /** ---------- UI STATE ---------- */
-  const [uiPhase, setUiPhase] = useState<UiPhase>('idle');
-  const [isHolding, setIsHolding] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+export default function VoiceToInvoiceScreen() {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  /** ---------- REFS (CRITICAL) ---------- */
-  const isRecordingRef = useRef(false);
-  const startTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const touchStartX = useRef(0);
+  const invoiceCounter = useRef(1248);
 
-  const slideX = useRef(new Animated.Value(0)).current;
-  const audioRecorder = useAudioRecorder(recordingOptions);
-
-  const currentJob = useJobStore((s) => s.currentJob);
-  const setCurrentJob = useJobStore((s) => s.setCurrentJob);
-  const clearCurrentJob = useJobStore((s) => s.clearCurrentJob);
-
-  /** ---------- LIFECYCLE ---------- */
-  useEffect(() => {
-    initializeJobWebSocket();
-    return () => {
-      disconnectJobWebSocket();
-      timerRef.current && clearInterval(timerRef.current);
-    };
-  }, []);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const startY = useRef(0);
+  const isCancelling = useRef(false);
 
   useEffect(() => {
-    if (currentJob?.status === 'DONE' && currentJob.resultRef) {
-      loadPdf(currentJob.resultRef);
-    } else if (currentJob?.status === 'FAILED') {
-      Alert.alert('Error', 'Invoice processing failed');
-      reset();
-    } else if (
-        currentJob?.status === 'PENDING' ||
-        currentJob?.status === 'RUNNING'
-    ) {
-      setUiPhase('processing');
+    if (isRecording) {
+      timerRef.current = setInterval(() => {
+        setSeconds((s) => s + 1);
+      }, 1000);
+    } else {
+      clearInterval(timerRef.current!);
+      setSeconds(0);
     }
-  }, [currentJob?.status]);
 
-  /** ---------- AUDIO ---------- */
-  const startRecording = async () => {
-    const permission =
-        await AudioModule.requestRecordingPermissionsAsync();
-    if (!permission.granted) return;
+    return () => clearInterval(timerRef.current!);
+  }, [isRecording]);
 
-    await AudioModule.setAudioModeAsync({
-      allowsRecording: true,
-      playsInSilentMode: true,
-    });
+  const startRecording = () => {
+    if (isProcessing) return;
 
-    await audioRecorder.prepareToRecordAsync();
-    audioRecorder.record();
+    setIsRecording(true);
+    Animated.spring(scaleAnim, {
+      toValue: 1.15,
+      useNativeDriver: true,
+    }).start();
+  };
 
-    isRecordingRef.current = true;
-    setDuration(0);
+  const stopRecording = (cancelled: boolean) => {
+    setIsRecording(false);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
 
-    timerRef.current = setInterval(
-        () => setDuration((d) => d + 1),
-        1000
+    if (cancelled) return;
+
+    const id = invoiceCounter.current++;
+    setIsProcessing(true);
+
+    setInvoices((prev) => [
+      { id, client: "Processing...", status: "PENDING" },
+      ...prev.slice(0, 2),
+    ]);
+
+    setTimeout(() => {
+      updateInvoice(id, "RUNNING");
+    }, 2000);
+
+    setTimeout(() => {
+      updateInvoice(id, "COMPLETED");
+      setIsProcessing(false);
+      setShowSuccess(true);
+    }, 8000);
+  };
+
+  const updateInvoice = (id: number, status: InvoiceStatus) => {
+    setInvoices((prev) =>
+        prev.map((inv) =>
+            inv.id === id
+                ? {
+                  ...inv,
+                  status,
+                  client: status === "COMPLETED" ? "New Client Corp." : inv.client,
+                  amount: status === "COMPLETED" ? "$2,150.00" : undefined,
+                }
+                : inv
+        )
     );
   };
 
-  const stopRecording = async (cancelled: boolean) => {
-    timerRef.current && clearInterval(timerRef.current);
-    timerRef.current = null;
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderGrant: (_, gesture) => {
+      startY.current = gesture.y0;
+      startRecording();
+    },
+    onPanResponderMove: (_, gesture) => {
+      if (startY.current - gesture.moveY > 80) {
+        isCancelling.current = true;
+      } else {
+        isCancelling.current = false;
+      }
+    },
+    onPanResponderRelease: () => {
+      stopRecording(isCancelling.current);
+      isCancelling.current = false;
+    },
+  });
 
-    if (!isRecordingRef.current) return;
-
-    isRecordingRef.current = false;
-    await audioRecorder.stop();
-
-    if (cancelled) {
-      reset();
-      return;
-    }
-
-    if (!audioRecorder.uri) {
-      reset();
-      return;
-    }
-
-    upload(audioRecorder.uri);
-  };
-
-  /** ---------- API ---------- */
-  const upload = async (uri: string) => {
-    setUiPhase('uploading');
-    try {
-      const jobId = await createInvoiceFromVoice(uri);
-      setCurrentJob({ id: jobId, status: 'PENDING' });
-    } catch {
-      Alert.alert('Upload failed');
-      reset();
-    }
-  };
-
-  const loadPdf = async (id: string) => {
-    const url = await getInvoicePdfLink(id);
-    setPdfUrl(url);
-    setUiPhase('done');
-  };
-
-  const reset = () => {
-    clearCurrentJob();
-    setUiPhase('idle');
-    setDuration(0);
-    setIsCancelling(false);
-  };
-
-  /** ---------- GESTURES ---------- */
-  const onPressIn = (e: any) => {
-    if (uiPhase !== 'idle') return;
-
-    setIsHolding(true);
-    setIsCancelling(false);
-    slideX.setValue(0);
-    touchStartX.current = e.nativeEvent.pageX;
-
-    startTimeoutRef.current = setTimeout(
-        startRecording,
-        HOLD_DELAY
-    );
-  };
-
-  const onPressOut = (e: any) => {
-    setIsHolding(false);
-
-    if (!isRecordingRef.current) {
-      startTimeoutRef.current &&
-      clearTimeout(startTimeoutRef.current);
-      return;
-    }
-
-    const delta =
-        e.nativeEvent.pageX - touchStartX.current;
-
-    stopRecording(delta < CANCEL_THRESHOLD);
-  };
-
-  const onMove = (e: any) => {
-    if (!isRecordingRef.current) return;
-
-    const delta =
-        e.nativeEvent.pageX - touchStartX.current;
-
-    if (delta < 0) {
-      slideX.setValue(
-          Math.max(delta, CANCEL_THRESHOLD - 20)
-      );
-      setIsCancelling(delta < CANCEL_THRESHOLD);
-    }
-  };
-
-  /** ---------- RENDER ---------- */
   return (
       <View style={styles.container}>
-        <Text style={styles.title}>Create Invoice</Text>
-        <Text style={styles.subtitle}>
-          Hold to record invoice details
-        </Text>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <Menu size={24} color="#374151" />
+          <Text style={styles.headerTitle}>Voice to Invoice</Text>
+          <Settings size={24} color="#374151" />
+        </View>
 
-        {uiPhase === 'idle' && (
-            <>
-              {isRecordingRef.current && (
-                  <View style={styles.recordOverlay}>
-                    <Animated.Text
-                        style={[
-                          styles.slideText,
-                          { opacity: slideX.interpolate({
-                              inputRange: [CANCEL_THRESHOLD, 0],
-                              outputRange: [1, 0.3],
-                            }) },
-                        ]}
-                    >
-                      ← Slide to cancel
-                    </Animated.Text>
+        {/* RECORD CARD */}
+        <View style={styles.card}>
+          <Text style={styles.title}>Create New Invoice</Text>
+          <Text style={styles.subtitle}>
+            {isProcessing ? "Processing invoice..." : "Press and hold to record"}
+          </Text>
 
-                    <Text style={styles.timer}>
-                      {new Date(duration * 1000)
-                          .toISOString()
-                          .substring(14, 19)}
+          {isRecording && (
+              <Text style={styles.recordingText}>
+                Recording… {Math.floor(seconds / 60)}:
+                {(seconds % 60).toString().padStart(2, "0")}
+              </Text>
+          )}
+
+          <Animated.View
+              {...panResponder.panHandlers}
+              style={[
+                styles.micButton,
+                {
+                  backgroundColor: isRecording ? "#dc2626" : "#2563eb",
+                  transform: [{ scale: scaleAnim }],
+                  opacity: isProcessing ? 0.5 : 1,
+                },
+              ]}
+          >
+            <Mic size={36} color="white" />
+          </Animated.View>
+
+          <Text style={styles.helperText}>
+            Hold to record • Release to send
+          </Text>
+
+          {/* TIPS */}
+          <View style={styles.tipBox}>
+            <Info size={20} color="#2563eb" />
+            <View style={{ marginLeft: 8 }}>
+              <Text style={styles.tipTitle}>Tips for best results:</Text>
+              <Text style={styles.tip}>• Speak clearly</Text>
+              <Text style={styles.tip}>• Include items & amounts</Text>
+              <Text style={styles.tip}>• Mention due date</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* INVOICES */}
+        <FlatList
+            data={invoices}
+            keyExtractor={(i) => i.id.toString()}
+            contentContainerStyle={{ paddingHorizontal: 16 }}
+            renderItem={({ item }) => (
+                <View style={styles.invoiceCard}>
+                  <View style={styles.invoiceHeader}>
+                    <Text style={styles.invoiceTitle}>Invoice #{item.id}</Text>
+                    <Text style={[styles.status, statusStyle[item.status]]}>
+                      {item.status}
                     </Text>
                   </View>
-              )}
+                  <Text style={styles.invoiceClient}>{item.client}</Text>
+                  {item.amount && (
+                      <Text style={styles.invoiceAmount}>Amount: {item.amount}</Text>
+                  )}
+                  <View style={styles.invoiceActions}>
+                    <TouchableOpacity
+                        disabled={item.status !== "COMPLETED"}
+                        style={[
+                          styles.primaryBtn,
+                          item.status !== "COMPLETED" && styles.disabled,
+                        ]}
+                    >
+                      <Download size={16} color="white" />
+                      <Text style={styles.btnText}>PDF</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        disabled={item.status !== "COMPLETED"}
+                        style={styles.secondaryBtn}
+                    >
+                      <Eye size={16} color="#374151" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+            )}
+        />
 
-              <Pressable
-                  onPressIn={onPressIn}
-                  onPressOut={onPressOut}
-                  onTouchMove={onMove}
-                  style={[
-                    styles.button,
-                    isHolding && styles.buttonPressed,
-                  ]}
+        {/* SUCCESS MODAL */}
+        <Modal visible={showSuccess} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modal}>
+              <CheckCircle size={64} color="#16a34a" />
+              <Text style={styles.modalTitle}>Invoice Created!</Text>
+              <TouchableOpacity
+                  style={styles.primaryBtn}
+                  onPress={() => setShowSuccess(false)}
               >
-                <Ionicons name="mic" size={26} color="#fff" />
-                <Text style={styles.buttonText}>
-                  Hold to record
-                </Text>
-              </Pressable>
-            </>
-        )}
-
-        {uiPhase === 'uploading' && <ActivityIndicator size="large" />}
-        {uiPhase === 'processing' && <Text>Processing…</Text>}
-        {uiPhase === 'done' && (
-            <Pressable onPress={() => Linking.openURL(pdfUrl!)}>
-              <Text style={styles.done}>View PDF</Text>
-            </Pressable>
-        )}
+                <Download size={16} color="white" />
+                <Text style={styles.btnText}>Download PDF</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
   );
 }
 
+/* ---------------- STYLES ---------------- */
+
+const statusStyle = {
+  PENDING: { color: "#ca8a04" },
+  RUNNING: { color: "#2563eb" },
+  COMPLETED: { color: "#16a34a" },
+};
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+  container: { flex: 1, backgroundColor: "#f9fafb" },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderColor: "#e5e7eb",
   },
-
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 6,
+  headerTitle: { fontSize: 18, fontWeight: "600" },
+  card: {
+    margin: 16,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 16,
   },
-
-  subtitle: {
-    fontSize: 15,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 48,
+  title: { fontSize: 20, fontWeight: "600", textAlign: "center" },
+  subtitle: { textAlign: "center", color: "#6b7280", marginBottom: 12 },
+  recordingText: { color: "#dc2626", textAlign: "center", marginBottom: 8 },
+  micButton: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignSelf: "center",
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 16,
   },
-
-  /* ---------- RECORD BUTTON ---------- */
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#25D366', // WhatsApp green
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 32,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-
-  buttonPressed: {
-    transform: [{ scale: 1.08 }],
-    backgroundColor: '#1ebe5d',
-  },
-
-  buttonText: {
-    marginLeft: 10,
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-
-  /* ---------- RECORDING OVERLAY ---------- */
-  recordOverlay: {
-    position: 'absolute',
-    top: '45%',
-    alignItems: 'center',
-  },
-
-  slideText: {
-    fontSize: 14,
-    color: '#999',
-    marginBottom: 12,
-  },
-
-  timer: {
-    fontSize: 36,
-    fontWeight: '300',
-    color: '#e53935',
-    fontVariant: ['tabular-nums'],
-  },
-
-  /* ---------- PROCESSING ---------- */
-  done: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#25D366',
+  helperText: { textAlign: "center", color: "#6b7280", fontSize: 12 },
+  tipBox: {
+    flexDirection: "row",
+    backgroundColor: "#eff6ff",
+    padding: 12,
+    borderRadius: 12,
     marginTop: 16,
   },
+  tipTitle: { fontWeight: "600", marginBottom: 4 },
+  tip: { fontSize: 12 },
+  invoiceCard: {
+    backgroundColor: "white",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  invoiceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  invoiceTitle: { fontWeight: "600" },
+  status: { fontSize: 12, fontWeight: "600" },
+  invoiceClient: { color: "#6b7280", marginTop: 4 },
+  invoiceAmount: { marginTop: 8, fontWeight: "600" },
+  invoiceActions: {
+    flexDirection: "row",
+    marginTop: 12,
+    gap: 8,
+  },
+  primaryBtn: {
+    flexDirection: "row",
+    gap: 6,
+    backgroundColor: "#2563eb",
+    padding: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  secondaryBtn: {
+    padding: 10,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 10,
+  },
+  btnText: { color: "white", fontWeight: "600" },
+  disabled: { opacity: 0.4 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modal: {
+    backgroundColor: "white",
+    padding: 24,
+    borderRadius: 20,
+    alignItems: "center",
+    width: 280,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "600", marginVertical: 12 },
 });
-
