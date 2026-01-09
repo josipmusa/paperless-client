@@ -9,35 +9,11 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<string> 
     ? `file://${audioUri}` 
     : audioUri;
   
-  console.log("Original URI:", audioUri);
-  console.log("Formatted URI:", fileUri);
-  console.log("Platform:", Platform.OS);
-  
-  // Determine file extension from URI
-  const uriParts = audioUri.split('.');
-  const fileExtension = uriParts[uriParts.length - 1];
-  const fileName = `recording.${fileExtension}`;
-  
-  // Determine MIME type based on extension
-  let mimeType = 'audio/m4a';
-  if (fileExtension === 'wav') {
-    mimeType = 'audio/wav';
-  } else if (fileExtension === 'mp3') {
-    mimeType = 'audio/mp3';
-  } else if (fileExtension === 'webm') {
-    mimeType = 'audio/webm';
-  }
-  
-  console.log("File name:", fileName);
-  console.log("MIME type:", mimeType);
-  
   formData.append('file', {
     uri: fileUri,
-    type: mimeType,
-    name: fileName,
+    type: 'audio/m4a',
+    name: 'recording.m4a',
   } as any);
-
-  console.log("FormData prepared, sending request...");
 
   const response = await apiClient.post<string>('/invoices', formData, {
     headers: {
@@ -45,7 +21,6 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<string> 
     },
   });
   
-  console.log("Response received:", response.data);
   return response.data;
 };
 

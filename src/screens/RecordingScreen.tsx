@@ -120,9 +120,7 @@ export default function VoiceToInvoiceScreen() {
     // Stop recording and get URI
     try {
       await recorder.stop();
-      const uri = recorder.uri;
-
-      console.log("Recording URI:", uri);
+      const uri = recorder.uri
 
       if (!uri) {
         Alert.alert("Error", "Failed to save recording.");
@@ -139,9 +137,7 @@ export default function VoiceToInvoiceScreen() {
       ]);
 
       try {
-        console.log("Sending audio to backend:", uri);
         const invoiceId = await createInvoiceFromVoice(uri);
-        console.log("Invoice created with ID:", invoiceId);
         
         updateInvoice(id, "RUNNING");
 
@@ -151,16 +147,11 @@ export default function VoiceToInvoiceScreen() {
           setIsProcessing(false);
           setShowSuccess(true);
         }, 5000);
-      } catch (error: any) {
+      } catch (error) {
         console.error("Failed to create invoice:", error);
-        console.error("Error details:", error.response?.data);
-        console.error("Error status:", error.response?.status);
         setInvoices((prev) => prev.filter((inv) => inv.id !== id));
         setIsProcessing(false);
-        Alert.alert(
-          "Error", 
-          `Failed to process recording: ${error.response?.data?.message || error.message || 'Unknown error'}`
-        );
+        Alert.alert("Error", "Failed to process recording. Please try again.");
       }
     } catch (error) {
       console.error("Failed to stop recording:", error);
