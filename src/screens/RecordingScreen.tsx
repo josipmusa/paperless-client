@@ -196,30 +196,52 @@ export default function VoiceToInvoiceScreen() {
   const stopRecording = async (cancelled: boolean) => {
     // Check if recording actually started
     if (!recordingStarted.current) {
+      console.log("Recording never started, ignoring stop request");
       return;
     }
 
     const recordingDuration = Date.now() - recordingStartTime.current;
     
+    // Ignore accidental taps (less than 500ms) - but still stop the recording
+    if (recordingDuration < 500) {
+      console.log("Recording too short, ignoring:", recordingDuration);
+      setIsRecording(false);
+      recordingStarted.current = false;
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+      try {
+        await recorder.stop();
+      } catch (error) {
+        console.error("Failed to stop short recording:", error);
+      }
+      return;
+    }
+
+    if (cancelled) {
+      console.log("Recording cancelled by user");
+      setIsRecording(false);
+      recordingStarted.current = false;
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+      }).start();
+      try {
+        await recorder.stop();
+      } catch (error) {
+        console.error("Failed to stop cancelled recording:", error);
+      }
+      return;
+    }
+
+    // Valid recording - stop and process
     setIsRecording(false);
     recordingStarted.current = false;
     Animated.spring(scaleAnim, {
       toValue: 1,
       useNativeDriver: true,
     }).start();
-
-    // Ignore accidental taps (less than 500ms)
-    if (recordingDuration < 500) {
-      console.log("Recording too short, ignoring:", recordingDuration);
-      await recorder.stop();
-      return;
-    }
-
-    if (cancelled) {
-      console.log("Recording cancelled by user");
-      await recorder.stop();
-      return;
-    }
 
     // Stop recording and get URI
     try {
@@ -297,10 +319,10 @@ export default function VoiceToInvoiceScreen() {
 
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: (_, gesture) => {
+    onPanResponderGrant: async (_, gesture) => {
       startY.current = gesture.y0;
       startX.current = gesture.x0;
-      startRecording();
+      await startRecording();
     },
     onPanResponderMove: (_, gesture) => {
       const horizontalDistance = Math.abs(gesture.moveX - startX.current);
