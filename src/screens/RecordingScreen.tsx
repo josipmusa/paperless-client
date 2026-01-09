@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, FlatList, Vibration } from "react-native";
+import { View, Text, StyleSheet, FlatList} from "react-native";
+import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from 'react-native-root-toast';
 import { Menu, Settings } from "lucide-react-native";
@@ -37,6 +38,19 @@ export default function VoiceToInvoiceScreen() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const recordingStartTime = useRef<number>(0);
   const recordingStarted = useRef(false);
+
+  const haptics = {
+    start: () =>
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
+
+    stop: () =>
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+
+    cancel: () =>
+        Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Warning
+        ),
+  };
   
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const { downloadPdf, sharePdf, viewPdf } = usePdfOperations();
@@ -164,6 +178,8 @@ export default function VoiceToInvoiceScreen() {
     shouldCancelStartRef.current = false;
     setIsGettingReady(true);
 
+    haptics.start();
+
     try {
       const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
@@ -192,7 +208,6 @@ export default function VoiceToInvoiceScreen() {
           return;
         }
 
-        Vibration.vibrate(50);
         recorder.record();
         recordingStartTime.current = Date.now();
         recordingStarted.current = true;
@@ -213,6 +228,7 @@ export default function VoiceToInvoiceScreen() {
       shouldCancelStartRef.current = true;
       isStartingRef.current = false;
       setIsGettingReady(false);
+      haptics.cancel();
       return;
     }
 
@@ -222,13 +238,14 @@ export default function VoiceToInvoiceScreen() {
     recordingStarted.current = false;
     setIsRecording(false);
 
-    Vibration.vibrate(50);
+    haptics.stop();
 
     try {
       await recorder.stop();
     } catch {}
 
     if (duration < 500 || cancelled) {
+      haptics.cancel();
       if (cancelled) {
         Toast.show('Recording cancelled', {
           duration: Toast.durations.SHORT,
@@ -281,6 +298,9 @@ export default function VoiceToInvoiceScreen() {
       recordingStarted.current = false;
       isStartingRef.current = false;
       setIsRecording(false);
+
+      haptics.cancel();
+
       try {
         await recorder.stop();
       } catch {}
