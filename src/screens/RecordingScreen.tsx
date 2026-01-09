@@ -22,7 +22,7 @@ import {
   CheckCircle,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
-import { createInvoiceFromVoice, getInvoiceInformation } from "../api/invoiceApi";
+import { createInvoiceFromVoice, getInvoiceInformation, getInvoices } from "../api/invoiceApi";
 import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSocket";
 
 type Invoice = {
@@ -69,12 +69,32 @@ export default function VoiceToInvoiceScreen() {
     return () => clearInterval(timerRef.current!);
   }, [isRecording]);
 
+  const fetchRecentInvoices = async () => {
+    try {
+      const invoiceData = await getInvoices();
+      const recentInvoices: Invoice[] = invoiceData.map((invoice) => ({
+        jobId: `existing-${invoice.invoiceNumber}`,
+        invoiceId: invoice.invoiceNumber,
+        invoiceNumber: invoice.invoiceNumber,
+        customerName: invoice.customerName,
+        amount: `$${invoice.totalAmount.toFixed(2)}`,
+        status: "DONE",
+      }));
+      setInvoices(recentInvoices);
+    } catch (error) {
+      console.error("Failed to fetch recent invoices:", error);
+    }
+  };
+
   useEffect(() => {
     // Connect to WebSocket on mount
     jobWebSocketService.connect();
 
     // Subscribe to job updates
     const unsubscribe = jobWebSocketService.subscribe(handleJobUpdate);
+
+    // Fetch recent invoices
+    fetchRecentInvoices();
 
     return () => {
       unsubscribe();

@@ -48,3 +48,8 @@ export const getInvoiceInformation = async (invoiceId: string): Promise<InvoiceD
     throw error;
   }
 };
+
+export const getInvoices = async (): Promise<InvoiceData[]> => {
+  const response = await apiClient.get<InvoiceData[]>('/invoices');
+  return response.data;
+};
