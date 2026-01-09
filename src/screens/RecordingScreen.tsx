@@ -997,7 +997,7 @@ const styles = StyleSheet.create({
     marginTop: 8, 
     fontSize: 18,
     fontWeight: "700", 
-    color: "#3b82f6",
+    color: "#4CAF50",
   },
   retryBtn: {
     backgroundColor: "#ca8a04",
