@@ -9,6 +9,7 @@ import {
   Animated,
   PanResponder,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Mic,
   Menu,
@@ -129,12 +130,12 @@ export default function VoiceToInvoiceScreen() {
   });
 
   return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         {/* HEADER */}
         <View style={styles.header}>
-          <Menu size={24} color="#374151" />
+          <Menu size={24} color="#e5e7eb" />
           <Text style={styles.headerTitle}>Voice to Invoice</Text>
-          <Settings size={24} color="#374151" />
+          <Settings size={24} color="#e5e7eb" />
         </View>
 
         {/* RECORD CARD */}
@@ -213,7 +214,7 @@ export default function VoiceToInvoiceScreen() {
                         disabled={item.status !== "COMPLETED"}
                         style={styles.secondaryBtn}
                     >
-                      <Eye size={16} color="#374151" />
+                      <Eye size={16} color="#e5e7eb" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -236,7 +237,7 @@ export default function VoiceToInvoiceScreen() {
             </View>
           </View>
         </Modal>
-      </View>
+      </SafeAreaView>
   );
 }
 
@@ -249,25 +250,25 @@ const statusStyle = {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9fafb" },
+  container: { flex: 1, backgroundColor: "#0f172a" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     padding: 16,
-    backgroundColor: "white",
+    backgroundColor: "#1e293b",
     borderBottomWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#334155",
   },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
+  headerTitle: { fontSize: 18, fontWeight: "600", color: "#f1f5f9" },
   card: {
     margin: 16,
-    backgroundColor: "white",
+    backgroundColor: "#1e293b",
     borderRadius: 20,
     padding: 16,
   },
-  title: { fontSize: 20, fontWeight: "600", textAlign: "center" },
-  subtitle: { textAlign: "center", color: "#6b7280", marginBottom: 12 },
-  recordingText: { color: "#dc2626", textAlign: "center", marginBottom: 8 },
+  title: { fontSize: 20, fontWeight: "600", textAlign: "center", color: "#f1f5f9" },
+  subtitle: { textAlign: "center", color: "#94a3b8", marginBottom: 12 },
+  recordingText: { color: "#ef4444", textAlign: "center", marginBottom: 8 },
   micButton: {
     width: 96,
     height: 96,
@@ -277,18 +278,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginVertical: 16,
   },
-  helperText: { textAlign: "center", color: "#6b7280", fontSize: 12 },
+  helperText: { textAlign: "center", color: "#94a3b8", fontSize: 12 },
   tipBox: {
     flexDirection: "row",
-    backgroundColor: "#eff6ff",
+    backgroundColor: "#334155",
     padding: 12,
     borderRadius: 12,
     marginTop: 16,
   },
-  tipTitle: { fontWeight: "600", marginBottom: 4 },
-  tip: { fontSize: 12 },
+  tipTitle: { fontWeight: "600", marginBottom: 4, color: "#f1f5f9" },
+  tip: { fontSize: 12, color: "#cbd5e1" },
   invoiceCard: {
-    backgroundColor: "white",
+    backgroundColor: "#1e293b",
     padding: 16,
     borderRadius: 16,
     marginBottom: 12,
@@ -297,10 +298,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  invoiceTitle: { fontWeight: "600" },
+  invoiceTitle: { fontWeight: "600", color: "#f1f5f9" },
   status: { fontSize: 12, fontWeight: "600" },
-  invoiceClient: { color: "#6b7280", marginTop: 4 },
-  invoiceAmount: { marginTop: 8, fontWeight: "600" },
+  invoiceClient: { color: "#94a3b8", marginTop: 4 },
+  invoiceAmount: { marginTop: 8, fontWeight: "600", color: "#f1f5f9" },
   invoiceActions: {
     flexDirection: "row",
     marginTop: 12,
@@ -316,7 +317,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     padding: 10,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#334155",
     borderRadius: 10,
   },
   btnText: { color: "white", fontWeight: "600" },
@@ -328,11 +329,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modal: {
-    backgroundColor: "white",
+    backgroundColor: "#1e293b",
     padding: 24,
     borderRadius: 20,
     alignItems: "center",
     width: 280,
   },
-  modalTitle: { fontSize: 18, fontWeight: "600", marginVertical: 12 },
+  modalTitle: { fontSize: 18, fontWeight: "600", marginVertical: 12, color: "#f1f5f9" },
 });
