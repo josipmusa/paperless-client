@@ -8,6 +8,16 @@ export interface InvoiceData {
   totalAmount: number;
 }
 
+export interface PaginatedInvoiceDataResponse {
+  content: InvoiceData[];
+  page: {
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    number: number; // Current page index (0-based)
+  };
+}
+
 export const createInvoiceFromVoice = async (audioUri: string): Promise<string> => {
   const formData = new FormData();
   
@@ -50,6 +60,6 @@ export const getInvoiceInformation = async (invoiceId: string): Promise<InvoiceD
 };
 
 export const getInvoices = async (): Promise<InvoiceData[]> => {
-  const response = await apiClient.get<InvoiceData[]>('/invoices');
-  return response.data;
+  const response = await apiClient.get<PaginatedInvoiceDataResponse>('/invoices');
+  return response.data.content;
 };
