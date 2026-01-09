@@ -23,7 +23,7 @@ import {
   Share2,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
-import * as FileSystem from 'expo-file-system';
+import {File, Paths} from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { createInvoiceFromVoice, getInvoiceInformation, getInvoices } from "../api/invoiceApi";
 import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSocket";
@@ -332,14 +332,35 @@ export default function VoiceToInvoiceScreen() {
   };
 
 
+  const getInvoicePdf = async (pdfUrl: string, invoiceNumber: string) => {
+    const fileName = `Invoice_${invoiceNumber}.pdf`;
+    const fileUri = Paths.document.uri + fileName;
+
+    // If already downloaded, reuse it
+    const file = new File(fileUri);
+    if (file.exists) {
+      return fileUri;
+    }
+    const result = await File.downloadFileAsync(pdfUrl, file)
+
+    if (!result.exists || result.size <= 0) {
+      throw new Error('Download failed');
+    }
+
+    return result.uri;
+  };
+
   const downloadPdf = async (pdfUrl: string, invoiceNumber: string) => {
     try {
-      const fileName = `Invoice_${invoiceNumber}.pdf`;
-      const destination = new FileSystem.File(FileSystem.Paths.document, fileName);
-      
-      await FileSystem.File.downloadFileAsync(pdfUrl, destination, { idempotent: true });
-      
-      Alert.alert("Success", `Invoice ${invoiceNumber} downloaded successfully!`);
+      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+
+      Alert.alert(
+          'Invoice saved',
+          `Invoice ${invoiceNumber} is available offline.`,
+          [
+            { text: 'OK' }
+          ]
+      );
     } catch (error) {
       console.error("Failed to download PDF:", error);
       Alert.alert("Error", "Failed to download PDF. Please try again.");
@@ -348,25 +369,21 @@ export default function VoiceToInvoiceScreen() {
 
   const sharePdf = async (pdfUrl: string, invoiceNumber: string) => {
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      
-      if (!isAvailable) {
-        Alert.alert("Not Supported", "Sharing is not available on this device.");
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Sharing unavailable', 'Your device does not support sharing.');
         return;
       }
 
-      const fileName = `Invoice_${invoiceNumber}.pdf`;
-      const destination = new FileSystem.File(FileSystem.Paths.document, fileName);
-      
-      const file = await FileSystem.File.downloadFileAsync(pdfUrl, destination, { idempotent: true });
-      
-      await Sharing.shareAsync(file.uri, {
+      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+
+      await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
         dialogTitle: `Share Invoice ${invoiceNumber}`,
       });
     } catch (error) {
-      console.error("Failed to share PDF:", error);
-      Alert.alert("Error", "Failed to share PDF. Please try again.");
+      console.error(error);
+      Alert.alert('Share failed', 'Could not share the invoice.');
     }
   };
 
