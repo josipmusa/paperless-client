@@ -25,6 +25,9 @@ import {
   CheckCircle,
   Share2,
   Loader2,
+  ChevronUp,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import {File, Paths} from 'expo-file-system';
@@ -62,6 +65,8 @@ export default function VoiceToInvoiceScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cancelIndicatorOpacity = useRef(new Animated.Value(0)).current;
   const processingSpinAnim = useRef(new Animated.Value(0)).current;
+  const recordingPulseAnim = useRef(new Animated.Value(1)).current;
+  const arrowSlideAnim = useRef(new Animated.Value(0)).current;
   const startY = useRef(0);
   const startX = useRef(0);
   const isCancelling = useRef(false);
@@ -87,6 +92,50 @@ export default function VoiceToInvoiceScreen() {
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
+
+  // Pulse animation for recording state
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingPulseAnim, {
+            toValue: 1.15,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(recordingPulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      recordingPulseAnim.setValue(1);
+    }
+  }, [isRecording]);
+
+  // Animated arrows for "slide to cancel" gesture
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(arrowSlideAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(arrowSlideAnim, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      arrowSlideAnim.setValue(0);
+    }
+  }, [isRecording]);
 
   useEffect(() => {
     if (isRecording) {
@@ -677,6 +726,22 @@ export default function VoiceToInvoiceScreen() {
               )}
             </View>
 
+            {/* Pulsing ring around mic button while recording */}
+            {isRecording && (
+              <Animated.View
+                style={[
+                  styles.pulseRing,
+                  {
+                    transform: [{ scale: recordingPulseAnim }],
+                    opacity: recordingPulseAnim.interpolate({
+                      inputRange: [1, 1.15],
+                      outputRange: [0.5, 0],
+                    }),
+                  },
+                ]}
+              />
+            )}
+
             <Animated.View
                 {...(isProcessing ? {} : panResponder.panHandlers)}
                 style={[
@@ -710,6 +775,83 @@ export default function VoiceToInvoiceScreen() {
                 <Text style={styles.swipeText}>✕</Text>
               </Animated.View>
             </Animated.View>
+
+            {/* Animated arrows for slide to cancel gesture */}
+            {isRecording && (
+              <View style={styles.gestureIndicators}>
+                {/* Up arrow */}
+                <Animated.View
+                  style={[
+                    styles.arrowIndicator,
+                    styles.arrowUp,
+                    {
+                      opacity: arrowSlideAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.3, 0.8, 0.3],
+                      }),
+                      transform: [
+                        {
+                          translateY: arrowSlideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ChevronUp size={20} color="#ef4444" strokeWidth={3} />
+                </Animated.View>
+
+                {/* Left arrows */}
+                <Animated.View
+                  style={[
+                    styles.arrowIndicator,
+                    styles.arrowLeft,
+                    {
+                      opacity: arrowSlideAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.3, 0.8, 0.3],
+                      }),
+                      transform: [
+                        {
+                          translateX: arrowSlideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, -10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ChevronsLeft size={24} color="#ef4444" strokeWidth={3} />
+                </Animated.View>
+
+                {/* Right arrows */}
+                <Animated.View
+                  style={[
+                    styles.arrowIndicator,
+                    styles.arrowRight,
+                    {
+                      opacity: arrowSlideAnim.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.3, 0.8, 0.3],
+                      }),
+                      transform: [
+                        {
+                          translateX: arrowSlideAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 10],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                >
+                  <ChevronsRight size={24} color="#ef4444" strokeWidth={3} />
+                </Animated.View>
+              </View>
+            )}
           </View>
 
           <Text style={styles.helperText}>
@@ -897,6 +1039,7 @@ const styles = StyleSheet.create({
   recordingArea: {
     alignItems: "center",
     minHeight: 140,
+    position: "relative",
   },
   timerContainer: {
     height: 24,
@@ -918,6 +1061,42 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
+    zIndex: 2,
+  },
+  pulseRing: {
+    position: "absolute",
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 3,
+    borderColor: "#dc2626",
+    top: 28,
+    zIndex: 1,
+  },
+  gestureIndicators: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    top: 0,
+    zIndex: 0,
+  },
+  arrowIndicator: {
+    position: "absolute",
+  },
+  arrowUp: {
+    top: 0,
+    left: "50%",
+    marginLeft: -12,
+  },
+  arrowLeft: {
+    left: 20,
+    top: "50%",
+    marginTop: 16,
+  },
+  arrowRight: {
+    right: 20,
+    top: "50%",
+    marginTop: 16,
   },
   swipeOverlay: {
     position: "absolute",
