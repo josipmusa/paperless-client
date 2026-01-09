@@ -8,6 +8,7 @@ import {
   Modal,
   Animated,
   PanResponder,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -20,6 +21,8 @@ import {
   Bell,
   CheckCircle,
 } from "lucide-react-native";
+import { Audio } from "expo-audio";
+import { createInvoiceFromVoice } from "../api/invoiceApi";
 
 type InvoiceStatus = "PENDING" | "RUNNING" | "COMPLETED";
 
@@ -39,6 +42,7 @@ export default function VoiceToInvoiceScreen() {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const invoiceCounter = useRef(1248);
+  const recordingRef = useRef<Audio.Recording | null>(null);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const startY = useRef(0);
@@ -59,18 +63,65 @@ export default function VoiceToInvoiceScreen() {
     return () => clearInterval(timerRef.current!);
   }, [isRecording]);
 
-  const startRecording = () => {
+  const startRecording = async () => {
     if (isProcessing) return;
 
-    recordingStartTime.current = Date.now();
-    setIsRecording(true);
-    Animated.spring(scaleAnim, {
-      toValue: 1.15,
-      useNativeDriver: true,
-    }).start();
+    try {
+      // Request permissions
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        Alert.alert("Permission Required", "Microphone access is needed to record audio.");
+        return;
+      }
+
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      // Start recording
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync({
+        isMeteringEnabled: true,
+        android: {
+          extension: ".m4a",
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: ".m4a",
+          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+          audioQuality: Audio.IOSAudioQuality.HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 2,
+          bitRate: 128000,
+        },
+        web: {
+          mimeType: "audio/webm",
+          bitsPerSecond: 128000,
+        },
+      });
+
+      await recording.startAsync();
+      recordingRef.current = recording;
+
+      recordingStartTime.current = Date.now();
+      setIsRecording(true);
+      Animated.spring(scaleAnim, {
+        toValue: 1.15,
+        useNativeDriver: true,
+      }).start();
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      Alert.alert("Error", "Failed to start recording. Please try again.");
+    }
   };
 
-  const stopRecording = (cancelled: boolean) => {
+  const stopRecording = async (cancelled: boolean) => {
     const recordingDuration = Date.now() - recordingStartTime.current;
     
     setIsRecording(false);
@@ -81,28 +132,65 @@ export default function VoiceToInvoiceScreen() {
 
     // Ignore accidental taps (less than 500ms)
     if (recordingDuration < 500) {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
       return;
     }
 
-    if (cancelled) return;
+    if (cancelled) {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
+      return;
+    }
 
-    const id = invoiceCounter.current++;
-    setIsProcessing(true);
+    // Stop recording and get URI
+    if (!recordingRef.current) return;
 
-    setInvoices((prev) => [
-      { id, client: "Processing...", status: "PENDING" },
-      ...prev.slice(0, 2),
-    ]);
+    try {
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
 
-    setTimeout(() => {
-      updateInvoice(id, "RUNNING");
-    }, 2000);
+      if (!uri) {
+        Alert.alert("Error", "Failed to save recording.");
+        return;
+      }
 
-    setTimeout(() => {
-      updateInvoice(id, "COMPLETED");
+      // Create invoice from voice
+      const id = invoiceCounter.current++;
+      setIsProcessing(true);
+
+      setInvoices((prev) => [
+        { id, client: "Processing...", status: "PENDING" },
+        ...prev.slice(0, 2),
+      ]);
+
+      try {
+        const invoiceId = await createInvoiceFromVoice(uri);
+        
+        updateInvoice(id, "RUNNING");
+
+        // Poll or wait for completion - for now, simulate
+        setTimeout(() => {
+          updateInvoice(id, "COMPLETED");
+          setIsProcessing(false);
+          setShowSuccess(true);
+        }, 5000);
+      } catch (error) {
+        console.error("Failed to create invoice:", error);
+        setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+        setIsProcessing(false);
+        Alert.alert("Error", "Failed to process recording. Please try again.");
+      }
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+      Alert.alert("Error", "Failed to process recording.");
       setIsProcessing(false);
-      setShowSuccess(true);
-    }, 8000);
+    }
   };
 
   const updateInvoice = (id: number, status: InvoiceStatus) => {
