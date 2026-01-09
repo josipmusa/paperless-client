@@ -8,7 +8,6 @@ import {
   Modal,
   Animated,
   PanResponder,
-  Alert,
   Linking,
   Vibration,
   ActivityIndicator,
@@ -211,7 +210,14 @@ export default function VoiceToInvoiceScreen() {
     } else if (update.status === "FAILED") {
       await forceStopRecording();
       setIsProcessing(false);
-      Alert.alert("Error", "Failed to process recording.");
+      Toast.show('Failed to process recording', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
       setInvoices((prev) => prev.filter((inv) => inv.jobId !== update.jobId));
     }
   };
@@ -367,7 +373,14 @@ export default function VoiceToInvoiceScreen() {
     } catch (e) {
       await forceStopRecording();
       setIsProcessing(false);
-      Alert.alert("Error", "Failed to process recording.");
+      Toast.show('Failed to process recording', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -405,11 +418,25 @@ export default function VoiceToInvoiceScreen() {
         );
         setShowSuccess(true);
       } else {
-        Alert.alert("Error", "Invoice information is not available yet. Please try again later.");
+        Toast.show('Invoice information is not available yet. Please try again later.', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
       }
     } catch (error) {
       console.error("Failed to retry fetch invoice:", error);
-      Alert.alert("Error", "Failed to fetch invoice information. Please try again.");
+      Toast.show('Failed to fetch invoice information. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -436,16 +463,24 @@ export default function VoiceToInvoiceScreen() {
     try {
       const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
 
-      Alert.alert(
-          'Invoice saved',
-          `Invoice ${invoiceNumber} is available offline.`,
-          [
-            { text: 'OK' }
-          ]
-      );
+      Toast.show(`Invoice ${invoiceNumber} is available offline`, {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#16a34a',
+        textColor: '#ffffff',
+      });
     } catch (error) {
       console.error("Failed to download PDF:", error);
-      Alert.alert("Error", "Failed to download PDF. Please try again.");
+      Toast.show('Failed to download PDF. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -453,7 +488,14 @@ export default function VoiceToInvoiceScreen() {
     try {
       const available = await Sharing.isAvailableAsync();
       if (!available) {
-        Alert.alert('Sharing unavailable', 'Your device does not support sharing.');
+        Toast.show('Your device does not support sharing', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
         return;
       }
 
@@ -462,10 +504,18 @@ export default function VoiceToInvoiceScreen() {
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
         dialogTitle: `Share Invoice ${invoiceNumber}`,
+        UTI: 'com.adobe.pdf',
       });
     } catch (error) {
       console.error(error);
-      Alert.alert('Share failed', 'Could not share the invoice.');
+      Toast.show('Could not share the invoice', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -477,11 +527,25 @@ export default function VoiceToInvoiceScreen() {
       if (canOpen) {
         await Linking.openURL(uri);
       } else {
-        Alert.alert('Unable to open PDF', 'No app available to view PDFs.');
+        Toast.show('No app available to view PDFs. Please install a PDF viewer from your app store.', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+        });
       }
     } catch (error) {
       console.error('Failed to open PDF:', error);
-      Alert.alert('Error', 'Failed to open PDF. Please try again.');
+      Toast.show('Failed to open PDF. Please try again.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -674,19 +738,23 @@ export default function VoiceToInvoiceScreen() {
                   <View style={styles.invoiceHeader}>
                     <View style={styles.invoiceTitleContainer}>
                       <PulsingDot status={item.status} />
-                      <Text style={styles.invoiceTitle} numberOfLines={1} ellipsizeMode="middle">
-                        {item.invoiceNumber ? `Invoice #${item.invoiceNumber}` : "Processing Invoice"}
-                      </Text>
+                      <View style={styles.invoiceTextContainer}>
+                        <Text style={styles.invoiceTitle} numberOfLines={1}>
+                          {item.customerName || "Processing..."}
+                        </Text>
+                        {item.invoiceNumber && (
+                          <Text style={styles.invoiceNumber} numberOfLines={1}>
+                            #{item.invoiceNumber}
+                          </Text>
+                        )}
+                      </View>
                     </View>
                     <Text style={[styles.status, statusStyle[item.status]]}>
                       {item.status}
                     </Text>
                   </View>
-                  <Text style={styles.invoiceClient}>
-                    {item.customerName || "Processing..."}
-                  </Text>
                   {item.amount && (
-                      <Text style={styles.invoiceAmount}>Amount: {item.amount}</Text>
+                      <Text style={styles.invoiceAmount}>{item.amount}</Text>
                   )}
                   
                   {item.fetchFailed && item.invoiceId && (
@@ -904,16 +972,33 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+    flexShrink: 0,
+  },
+  invoiceTextContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
   invoiceTitle: { 
     fontWeight: "600", 
     color: "#f1f5f9",
-    flex: 1,
-    flexShrink: 1,
+    fontSize: 16,
   },
-  status: { fontSize: 12, fontWeight: "600" },
-  invoiceClient: { color: "#94a3b8", marginTop: 4 },
-  invoiceAmount: { marginTop: 8, fontWeight: "600", color: "#f1f5f9" },
+  invoiceNumber: {
+    fontSize: 12,
+    color: "#94a3b8",
+    marginTop: 2,
+  },
+  status: { 
+    fontSize: 11, 
+    fontWeight: "600",
+    flexShrink: 0,
+  },
+  invoiceAmount: { 
+    marginTop: 8, 
+    fontSize: 18,
+    fontWeight: "700", 
+    color: "#3b82f6",
+  },
   retryBtn: {
     backgroundColor: "#ca8a04",
     padding: 10,
