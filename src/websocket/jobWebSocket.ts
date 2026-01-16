@@ -26,7 +26,7 @@ class JobWebSocketService {
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.access_token) {
       console.warn('No user session, cannot connect to WebSocket');
       return;
     }
@@ -36,6 +36,9 @@ class JobWebSocketService {
 
     this.client = new Client({
       webSocketFactory: () => new SockJS(`${WS_URL}`),
+      connectHeaders: {
+        Authorization: `Bearer ${accessToken}`
+      },
       reconnectDelay: 5000,
       heartbeatIncoming: 10000,
       heartbeatOutgoing: 10000,
