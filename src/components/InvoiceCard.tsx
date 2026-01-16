@@ -1,8 +1,7 @@
 import React, { useRef } from "react";
 import * as Haptics from "expo-haptics";
 import { StyleSheet, Text, View, Animated, Pressable } from "react-native";
-import { Download, Eye, Share2 } from "lucide-react-native";
-import { StatusIndicator } from "./StatusIndicator";
+import { Download, Eye, Share2, AlertCircle } from "lucide-react-native";
 import { JobStatus } from "../websocket/jobWebSocket";
 
 interface InvoiceCardProps {
@@ -20,11 +19,20 @@ interface InvoiceCardProps {
     onView: (pdfUrl: string, invoiceNumber: string) => void;
 }
 
-const statusStyle: Record<JobStatus, { color: string }> = {
-    PENDING: { color: "#ca8a04" },
-    RUNNING: { color: "#2563eb" },
-    DONE: { color: "#16a34a" },
-    FAILED: { color: "#dc2626" },
+// Modern "Pill" colors with background opacity
+const getStatusColors = (status: JobStatus) => {
+    switch (status) {
+        case "PENDING":
+            return { bg: "rgba(202, 138, 4, 0.15)", text: "#facc15" };
+        case "RUNNING":
+            return { bg: "rgba(37, 99, 235, 0.15)", text: "#60a5fa" };
+        case "DONE":
+            return { bg: "rgba(22, 163, 74, 0.15)", text: "#4ade80" };
+        case "FAILED":
+            return { bg: "rgba(220, 38, 38, 0.15)", text: "#f87171" };
+        default:
+            return { bg: "rgba(148, 163, 184, 0.15)", text: "#94a3b8" };
+    }
 };
 
 export function InvoiceCard({
@@ -42,58 +50,78 @@ export function InvoiceCard({
                                 onView,
                             }: InvoiceCardProps) {
     const canInteract = status === "DONE" && !fetchFailed && pdfDownloadUrl && invoiceNumber;
+    const statusColors = getStatusColors(status);
 
     return (
-        <View style={styles.invoiceCard}>
-            <View style={styles.invoiceHeader}>
-                <View style={styles.invoiceTitleContainer}>
-                    <StatusIndicator status={status} />
-                    <View style={styles.invoiceTextContainer}>
-                        <Text style={styles.invoiceTitle} numberOfLines={1}>
+        <View style={styles.cardContainer}>
+            {/* TOP SECTION: Info & Status */}
+            <View style={styles.cardBody}>
+                <View style={styles.topRow}>
+                    {/* Left Side: Name & ID */}
+                    <View style={styles.infoColumn}>
+                        <Text style={styles.customerName} numberOfLines={1}>
                             {customerName || "Processing..."}
                         </Text>
-                        {invoiceNumber && (
-                            <Text style={styles.invoiceNumber} numberOfLines={1}>
-                                #{invoiceNumber}
-                            </Text>
-                        )}
+                        <Text style={styles.invoiceId}>
+                            {invoiceNumber ? `#${invoiceNumber}` : "Generating ID..."}
+                        </Text>
+                    </View>
+
+                    {/* Right Side: Status Badge */}
+                    <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+                        <Text style={[styles.statusText, { color: statusColors.text }]}>
+                            {status === "DONE" ? "COMPLETED" : status}
+                        </Text>
                     </View>
                 </View>
-                <Text style={[styles.status, statusStyle[status]]}>
-                    {status === "DONE" ? "COMPLETED" : status}
-                </Text>
+
+                {/* Amount Row (Aligned Right or Left depending on preference, currently Right for emphasis) */}
+                <View style={styles.amountRow}>
+                    {amount ? (
+                        <Text style={styles.amountText}>{amount}</Text>
+                    ) : (
+                        <View style={{ height: 28 }} /> // Spacer to prevent jumping
+                    )}
+                </View>
+
+                {/* Error State */}
+                {fetchFailed && invoiceId && (
+                    <Pressable
+                        style={styles.errorBanner}
+                        onPress={() => onRetryFetch(jobId, invoiceId)}
+                    >
+                        <AlertCircle size={14} color="#fca5a5" />
+                        <Text style={styles.errorText}>Sync Failed • Tap to Retry</Text>
+                    </Pressable>
+                )}
             </View>
 
-            {amount && (
-                <Text style={styles.invoiceAmount}>{amount}</Text>
-            )}
+            {/* DIVIDER */}
+            <View style={styles.divider} />
 
-            {fetchFailed && invoiceId && (
-                <Pressable
-                    style={styles.retryBtn}
-                    onPress={() => onRetryFetch(jobId, invoiceId)}
-                >
-                    <Text style={styles.retryBtnText}>Retry Fetch Invoice</Text>
-                </Pressable>
-            )}
-
-            <View style={styles.invoiceActions}>
+            {/* BOTTOM SECTION: Actions */}
+            <View style={styles.actionRow}>
                 <ActionButton
-                    icon={<Download size={16} color="#60a5fa" />}
+                    icon={<Download size={18} color={canInteract ? "#60a5fa" : "#475569"} />}
                     label="Save"
                     disabled={!canInteract}
                     onPress={() => onDownload(pdfDownloadUrl!, invoiceNumber!)}
                 />
 
+                {/* Vertical Divider between buttons */}
+                <View style={styles.verticalDivider} />
+
                 <ActionButton
-                    icon={<Share2 size={16} color="#4ade80" />}
+                    icon={<Share2 size={18} color={canInteract ? "#4ade80" : "#475569"} />}
                     label="Share"
                     disabled={!canInteract}
                     onPress={() => onShare(pdfDownloadUrl!, invoiceNumber!)}
                 />
 
+                <View style={styles.verticalDivider} />
+
                 <ActionButton
-                    icon={<Eye size={16} color="#a78bfa" />}
+                    icon={<Eye size={18} color={canInteract ? "#a78bfa" : "#475569"} />}
                     label="View"
                     disabled={!canInteract}
                     onPress={() => onView(pdfDownloadUrl!, invoiceNumber!)}
@@ -108,21 +136,16 @@ function ActionButton({ icon, label, disabled, onPress }: any) {
 
     const handlePressIn = () => {
         if (disabled) return;
-        // Modern "Snappy" compression
         Animated.spring(scaleValue, {
-            toValue: 0.92,
-            tension: 100,
-            friction: 10,
+            toValue: 0.95,
             useNativeDriver: true,
         }).start();
     };
 
     const handlePressOut = () => {
-        // Modern spring back
         Animated.spring(scaleValue, {
             toValue: 1,
-            tension: 150,
-            friction: 7,
+            friction: 5,
             useNativeDriver: true,
         }).start();
     };
@@ -134,112 +157,124 @@ function ActionButton({ icon, label, disabled, onPress }: any) {
     };
 
     return (
-        <Animated.View style={{ flex: 1, transform: [{ scale: scaleValue }] }}>
-            <Pressable
-                disabled={disabled}
-                onPressIn={handlePressIn}
-                onPressOut={handlePressOut}
-                onPress={handlePress}
-                style={({ pressed }) => [
-                    styles.actionBtn,
-                    disabled && styles.disabled,
-                    pressed && { backgroundColor: "#3f4e64" },
-                ]}
-            >
-                <View style={styles.actionContent}>
-                    {icon}
-                    <Text style={styles.actionLabel}>{label}</Text>
-                </View>
-            </Pressable>
-        </Animated.View>
+        <Pressable
+            disabled={disabled}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onPress={handlePress}
+            style={styles.actionBtnTouchArea}
+        >
+            <Animated.View style={[styles.actionBtnContent, { transform: [{ scale: scaleValue }], opacity: disabled ? 0.4 : 1 }]}>
+                {icon}
+                <Text style={styles.actionLabel}>{label}</Text>
+            </Animated.View>
+        </Pressable>
     );
-
 }
 
 const styles = StyleSheet.create({
-    invoiceCard: {
+    cardContainer: {
         backgroundColor: "#1e293b", // Slate 800
-        padding: 18,
-        borderRadius: 20,
-        marginBottom: 12,
+        borderRadius: 16,
+        marginBottom: 16,
         borderWidth: 1,
         borderColor: "#334155", // Slate 700
+        overflow: 'hidden', // Ensures children don't bleed out
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+        elevation: 3,
     },
-    invoiceHeader: {
+    cardBody: {
+        padding: 16,
+    },
+    topRow: {
         flexDirection: "row",
         justifyContent: "space-between",
-        alignItems: "center",
-        gap: 8,
+        alignItems: "flex-start",
     },
-    invoiceTitleContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
+    infoColumn: {
         flex: 1,
+        marginRight: 12,
     },
-    invoiceTextContainer: {
-        flex: 1,
+    customerName: {
+        fontSize: 17,
+        fontWeight: "700",
+        color: "#f8fafc", // Slate 50
+        letterSpacing: 0.3,
+        marginBottom: 4,
     },
-    invoiceTitle: {
+    invoiceId: {
+        fontSize: 13,
+        color: "#94a3b8", // Slate 400
+        fontWeight: "500",
+    },
+    statusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 8,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    statusText: {
+        fontSize: 11,
+        fontWeight: "800",
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+    },
+    amountRow: {
+        marginTop: 12,
+        alignItems: 'flex-end', // Aligns amount to the right
+    },
+    amountText: {
+        fontSize: 24,
         fontWeight: "700",
         color: "#f8fafc",
-        fontSize: 17,
+        letterSpacing: -0.5,
     },
-    invoiceNumber: {
-        fontSize: 12,
-        color: "#94a3b8",
-        marginTop: 1,
-    },
-    status: {
-        fontSize: 11,
-        fontWeight: "700",
-        textTransform: 'uppercase',
-    },
-    invoiceAmount: {
+    errorBanner: {
         marginTop: 12,
-        fontSize: 20,
-        fontWeight: "800",
-        color: "#38bdf8", // Brighter blue for dark mode visibility
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(220, 38, 38, 0.1)',
+        padding: 8,
+        borderRadius: 8,
+        gap: 6,
     },
-    retryBtn: {
-        backgroundColor: "#ca8a04",
-        padding: 12,
-        borderRadius: 12,
-        marginTop: 16,
+    errorText: {
+        color: '#fca5a5',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    divider: {
+        height: 1,
+        backgroundColor: "#334155", // Slate 700
+    },
+    actionRow: {
+        flexDirection: "row",
+        backgroundColor: "#273549", // Slightly lighter/different than card body
+        height: 52,
+    },
+    verticalDivider: {
+        width: 1,
+        backgroundColor: "#334155",
+        marginVertical: 10,
+    },
+    actionBtnTouchArea: {
+        flex: 1,
+        justifyContent: "center",
         alignItems: "center",
     },
-    retryBtnText: {
-        color: "white",
-        fontWeight: "700",
-        fontSize: 14,
-    },
-    invoiceActions: {
+    actionBtnContent: {
         flexDirection: "row",
-        marginTop: 20,
+        alignItems: "center",
         gap: 8,
     },
-    actionBtn: {
-        flex: 1,
-        flexDirection: "row", // Side-by-side layout
-        alignItems: "center",
-        justifyContent: "center",
-        paddingVertical: 12,
-        borderRadius: 12,
-        backgroundColor: "#334155", // Slate 700
-        gap: 6,
-    },
-    actionContent: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-    },
     actionLabel: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: "#f1f5f9",
-    },
-    disabled: {
-        opacity: 0.2,
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#cbd5e1", // Slate 300
     },
 });

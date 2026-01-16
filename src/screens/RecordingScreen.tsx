@@ -13,6 +13,7 @@ import { InvoiceSuccessModal } from "../components/InvoiceSuccessModal";
 import { RecordingTips } from "../components/RecordingTips";
 import { PdfViewer } from "../components/PdfViewer";
 import { usePdfOperations } from "../hooks/usePdfOperations";
+import {setStatusBarStyle, StatusBar} from "expo-status-bar";
 
 type Invoice = {
   jobId: string;
@@ -85,7 +86,7 @@ export default function VoiceToInvoiceScreen() {
         invoiceId: invoice.invoiceNumber,
         invoiceNumber: invoice.invoiceNumber,
         customerName: invoice.customerName,
-        amount: `$${invoice.totalAmount.toFixed(2)}`,
+        amount: `${invoice.currency} ${invoice.totalAmount.toFixed(2)}`,
         status: "DONE",
         pdfDownloadUrl: invoice.pdfDownloadUrl,
       }));
@@ -99,6 +100,9 @@ export default function VoiceToInvoiceScreen() {
     jobWebSocketService.connect();
     const unsubscribe = jobWebSocketService.subscribe(handleJobUpdate);
     fetchRecentInvoices();
+    setTimeout(() => {
+      setStatusBarStyle("light");
+    }, 0);
 
     return () => {
       unsubscribe();
@@ -130,7 +134,7 @@ export default function VoiceToInvoiceScreen() {
                   invoiceId: update.resultRef,
                   invoiceNumber: invoiceData.invoiceNumber,
                   customerName: invoiceData.customerName,
-                  amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                  amount: `${invoiceData.currency} ${invoiceData.totalAmount.toFixed(2)}`,
                   fetchFailed: false,
                   pdfDownloadUrl: invoiceData.pdfDownloadUrl,
                 };
@@ -328,7 +332,7 @@ export default function VoiceToInvoiceScreen() {
                 ...inv,
                 invoiceNumber: invoiceData.invoiceNumber,
                 customerName: invoiceData.customerName,
-                amount: `$${invoiceData.totalAmount.toFixed(2)}`,
+                amount: `${invoiceData.currency} ${invoiceData.totalAmount.toFixed(2)}`,
                 fetchFailed: false,
               };
             }
@@ -363,6 +367,8 @@ export default function VoiceToInvoiceScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar style="light"/>
+
       {/* HEADER */}
       <View style={styles.header}>
         <Menu size={24} color="#e5e7eb" />
@@ -375,12 +381,12 @@ export default function VoiceToInvoiceScreen() {
         <Text style={styles.title}>Create New Invoice</Text>
         
         <RecordingButton
-          isRecording={isRecording}
-          isProcessing={isProcessing}
-          isGettingReady={isGettingReady}
-          seconds={seconds}
-          onStartRecording={startRecording}
-          onStopRecording={stopRecording}
+            isRecording={isRecording}
+            isProcessing={isProcessing}
+            isGettingReady={isGettingReady}
+            seconds={seconds}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
         />
 
         <RecordingTips />
@@ -388,18 +394,42 @@ export default function VoiceToInvoiceScreen() {
 
       {/* INVOICES */}
       <FlatList
-        data={invoices}
-        keyExtractor={(i) => i.jobId}
-        contentContainerStyle={{ paddingHorizontal: 16 }}
-        renderItem={({ item }) => (
-          <InvoiceCard
-            {...item}
-            onRetryFetch={retryFetchInvoice}
-            onDownload={downloadPdf}
-            onShare={sharePdf}
-            onView={viewPdf}
-          />
-        )}
+          data={invoices}
+          extraData={invoices}
+          keyExtractor={(i) => i.jobId}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          // Only show the title if the list isn't empty
+          ListHeaderComponent={
+            invoices.length > 0 ? (
+                <View style={styles.listHeaderContainer}>
+                  <View style={styles.listHeaderTitleRow}>
+                    <Text style={styles.listHeader}>Recent Invoices</Text>
+                  </View>
+                  <View style={styles.headerUnderline} />
+                </View>
+            ) : null
+          }
+          // This renders when 'data' is an empty array
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Menu size={32} color="#475569" />
+              </View>
+              <Text style={styles.emptyText}>No recent invoices</Text>
+              <Text style={styles.emptySubtext}>
+                Record your first voice invoice to see it appear here.
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => (
+              <InvoiceCard
+                  {...item}
+                  onRetryFetch={retryFetchInvoice}
+                  onDownload={downloadPdf}
+                  onShare={sharePdf}
+                  onView={viewPdf}
+              />
+          )}
       />
 
       {/* SUCCESS MODAL */}
@@ -409,6 +439,12 @@ export default function VoiceToInvoiceScreen() {
         onDownload={() => {
           if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
             downloadPdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+          }
+        }}
+        onView={() => {
+          if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
+            viewPdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+            setShowSuccess(false); // Close modal when viewing
           }
         }}
         onShare={() => {
@@ -443,6 +479,68 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#334155",
   },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#1e293b",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  emptyText: {
+    color: "#f1f5f9",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  emptySubtext: {
+    color: "#94a3b8",
+    fontSize: 14,
+    textAlign: "center",
+    marginTop: 8,
+    paddingHorizontal: 32,
+  },
+  listHeaderContainer: {
+    marginTop: 24,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  listHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  listHeader: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#f8fafc",
+    letterSpacing: -0.5,
+  },
+  countBadge: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  countText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  headerUnderline: {
+    height: 3,
+    width: 40,
+    backgroundColor: '#3b82f6', // Match your primary blue
+    borderRadius: 2,
+  },
   headerTitle: { 
     fontSize: 18, 
     fontWeight: "600", 
@@ -453,11 +551,19 @@ const styles = StyleSheet.create({
     backgroundColor: "#1e293b",
     borderRadius: 20,
     padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5, // for Android shadow
   },
-  title: { 
-    fontSize: 20, 
-    fontWeight: "600", 
-    textAlign: "center", 
-    color: "#f1f5f9" 
+
+  title: {
+    fontSize: 22,
+    fontWeight: "700",
+    textAlign: "center",
+    color: "#f1f5f9",
+    marginBottom: 12,
+    letterSpacing: 0.2,
   },
 });

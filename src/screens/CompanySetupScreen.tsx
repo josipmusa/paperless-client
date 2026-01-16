@@ -56,7 +56,7 @@ export default function CompanySetupScreen({ navigation }: Props) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.form}>
           <Text style={styles.title}>Company Setup</Text>
           <Text style={styles.subtitle}>Tell us about your company/contractor business</Text>

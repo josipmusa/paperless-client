@@ -6,6 +6,7 @@ export interface InvoiceData {
   pdfDownloadUrl: string;
   customerName: string;
   totalAmount: number;
+  currency: string;
 }
 
 export interface PaginatedInvoiceDataResponse {
