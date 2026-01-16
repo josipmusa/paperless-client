@@ -1,7 +1,7 @@
 import React from "react";
-import { Modal, StyleSheet, View, Text, Pressable, ActivityIndicator } from "react-native";
+import { Modal, StyleSheet, View, Text, Pressable, ActivityIndicator, Platform } from "react-native";
 import { X } from "lucide-react-native";
-import Pdf from "react-native-pdf";
+import { WebView } from "react-native-webview";
 
 interface PdfViewerProps {
   visible: boolean;
@@ -13,13 +13,68 @@ interface PdfViewerProps {
 export function PdfViewer({ visible, pdfUri, invoiceNumber, onClose }: PdfViewerProps) {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [base64Data, setBase64Data] = React.useState<string>("");
 
   React.useEffect(() => {
-    if (visible) {
+    if (visible && pdfUri) {
       setIsLoading(true);
       setError(null);
+      loadPdfAsBase64();
     }
   }, [visible, pdfUri]);
+
+  const loadPdfAsBase64 = async () => {
+    try {
+      const { readAsStringAsync } = await import("expo-file-system");
+      const base64 = await readAsStringAsync(pdfUri, {
+        encoding: "base64",
+      });
+      setBase64Data(base64);
+      setIsLoading(false);
+    } catch (err) {
+      console.error("Error loading PDF:", err);
+      setError("Failed to load PDF. Please try again.");
+      setIsLoading(false);
+    }
+  };
+
+  const getPdfHtml = () => {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            body {
+              background-color: #0f172a;
+              overflow: auto;
+            }
+            #pdf-container {
+              width: 100%;
+              height: 100vh;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+            }
+            embed {
+              width: 100%;
+              height: 100%;
+            }
+          </style>
+        </head>
+        <body>
+          <div id="pdf-container">
+            <embed src="data:application/pdf;base64,${base64Data}" type="application/pdf" width="100%" height="100%" />
+          </div>
+        </body>
+      </html>
+    `;
+  };
 
   return (
     <Modal
@@ -49,26 +104,22 @@ export function PdfViewer({ visible, pdfUri, invoiceNumber, onClose }: PdfViewer
           {error && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
+              <Pressable onPress={onClose} style={styles.errorButton}>
+                <Text style={styles.errorButtonText}>Close</Text>
+              </Pressable>
             </View>
           )}
 
-          {pdfUri && (
-            <Pdf
-              source={{ uri: pdfUri }}
+          {!isLoading && !error && base64Data && (
+            <WebView
+              source={{ html: getPdfHtml() }}
               style={styles.pdf}
-              onLoadComplete={(numberOfPages) => {
-                setIsLoading(false);
-                console.log(`PDF loaded with ${numberOfPages} pages`);
+              originWhitelist={['*']}
+              onError={(syntheticEvent) => {
+                const { nativeEvent } = syntheticEvent;
+                setError("Failed to display PDF. Please try again.");
+                console.error("WebView Error:", nativeEvent);
               }}
-              onError={(error) => {
-                setIsLoading(false);
-                setError("Failed to load PDF. Please try again.");
-                console.error("PDF Error:", error);
-              }}
-              trustAllCerts={false}
-              enablePaging={true}
-              spacing={10}
-              fitPolicy={0}
             />
           )}
         </View>
@@ -135,5 +186,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#ef4444",
     textAlign: "center",
+    marginBottom: 20,
+  },
+  errorButton: {
+    backgroundColor: "#334155",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: "#f1f5f9",
+    fontWeight: "600",
+    fontSize: 14,
   },
 });
