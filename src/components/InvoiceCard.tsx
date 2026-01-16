@@ -1,10 +1,11 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import * as Haptics from "expo-haptics";
 import { StyleSheet, Text, View, Animated, Pressable } from "react-native";
 import { Download, Eye, Share2, AlertCircle } from "lucide-react-native";
 import { JobStatus } from "../websocket/jobWebSocket";
 
 interface InvoiceCardProps {
+    index: number;
     jobId: string;
     invoiceId?: string;
     invoiceNumber?: string;
@@ -36,6 +37,7 @@ const getStatusColors = (status: JobStatus) => {
 };
 
 export function InvoiceCard({
+                                index,
                                 jobId,
                                 invoiceId,
                                 invoiceNumber,
@@ -49,11 +51,42 @@ export function InvoiceCard({
                                 onShare,
                                 onView,
                             }: InvoiceCardProps) {
+    const fadeAnim = useRef(new Animated.Value(0)).current; // Initial opacity 0
+    const translateY = useRef(new Animated.Value(20)).current; // Start 20 pixels down
+
+    useEffect(() => {
+        // Determine delay: only delay the first few items to keep it snappy
+        // If it's a new item added to the top (WebSocket), index is 0, so it appears instantly
+        const delay = index < 6 ? index * 100 : 0;
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 400,
+                delay: delay,
+                useNativeDriver: true,
+            }),
+            Animated.spring(translateY, {
+                toValue: 0,
+                friction: 8,
+                tension: 40,
+                delay: delay,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    }, []);
+
     const canInteract = status === "DONE" && !fetchFailed && pdfDownloadUrl && invoiceNumber;
     const statusColors = getStatusColors(status);
 
     return (
-        <View style={styles.cardContainer}>
+        <Animated.View style={[
+            styles.cardContainer,
+            {
+                opacity: fadeAnim,
+                transform: [{ translateY: translateY }],
+            }
+        ]}
+        >
             {/* TOP SECTION: Info & Status */}
             <View style={styles.cardBody}>
                 <View style={styles.topRow}>
@@ -127,7 +160,7 @@ export function InvoiceCard({
                     onPress={() => onView(pdfDownloadUrl!, invoiceNumber!)}
                 />
             </View>
-        </View>
+        </Animated.View>
     );
 }
 

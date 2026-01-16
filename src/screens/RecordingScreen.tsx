@@ -421,9 +421,10 @@ export default function VoiceToInvoiceScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
               <InvoiceCard
                   {...item}
+                  index={index}
                   onRetryFetch={retryFetchInvoice}
                   onDownload={downloadPdf}
                   onShare={sharePdf}

@@ -10,7 +10,7 @@ export function RecordingTips() {
         <Text style={styles.tipTitle}>Tips for best results:</Text>
         <Text style={styles.tip}>• Speak clearly</Text>
         <Text style={styles.tip}>• Include items & amounts</Text>
-        <Text style={styles.tip}>• Mention due date</Text>
+        <Text style={styles.tip}>• Mention full name of client</Text>
       </View>
     </View>
   );
