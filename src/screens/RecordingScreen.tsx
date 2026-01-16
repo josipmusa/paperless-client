@@ -11,6 +11,7 @@ import { RecordingButton } from "../components/RecordingButton";
 import { InvoiceCard } from "../components/InvoiceCard";
 import { InvoiceSuccessModal } from "../components/InvoiceSuccessModal";
 import { RecordingTips } from "../components/RecordingTips";
+import { PdfViewer } from "../components/PdfViewer";
 import { usePdfOperations } from "../hooks/usePdfOperations";
 
 type Invoice = {
@@ -53,7 +54,15 @@ export default function VoiceToInvoiceScreen() {
   };
   
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const { downloadPdf, sharePdf, viewPdf } = usePdfOperations();
+  const { 
+    downloadPdf, 
+    sharePdf, 
+    viewPdf, 
+    viewerVisible, 
+    currentPdfUri, 
+    currentInvoiceNumber, 
+    closeViewer 
+  } = usePdfOperations();
 
   useEffect(() => {
     if (isRecording) {
@@ -408,6 +417,14 @@ export default function VoiceToInvoiceScreen() {
           }
         }}
         canInteract={!!completedInvoice?.pdfDownloadUrl}
+      />
+
+      {/* PDF VIEWER */}
+      <PdfViewer
+        visible={viewerVisible}
+        pdfUri={currentPdfUri}
+        invoiceNumber={currentInvoiceNumber}
+        onClose={closeViewer}
       />
     </SafeAreaView>
   );

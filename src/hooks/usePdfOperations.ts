@@ -6,6 +6,9 @@ import Toast from "react-native-root-toast";
 
 export function usePdfOperations() {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [currentPdfUri, setCurrentPdfUri] = useState<string>("");
+  const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState<string>("");
 
   const getInvoicePdf = useCallback(async (pdfUrl: string, invoiceNumber: string): Promise<string> => {
     const fileName = `Invoice_${invoiceNumber}.pdf`;
@@ -90,23 +93,9 @@ export function usePdfOperations() {
   const viewPdf = useCallback(async (pdfUrl: string, invoiceNumber: string) => {
     try {
       const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
-
-      const canOpen = await Linking.canOpenURL(uri);
-      if (canOpen) {
-        await Linking.openURL(uri);
-      } else {
-        Toast.show(
-          "No app available to view PDFs. Please install a PDF viewer from your app store.",
-          {
-            duration: Toast.durations.LONG,
-            position: Toast.positions.BOTTOM,
-            shadow: true,
-            animation: true,
-            backgroundColor: "#f59e0b",
-            textColor: "#ffffff",
-          }
-        );
-      }
+      setCurrentPdfUri(uri);
+      setCurrentInvoiceNumber(invoiceNumber);
+      setViewerVisible(true);
     } catch (error) {
       console.error("Failed to open PDF:", error);
       Toast.show("Failed to open PDF. Please try again.", {
@@ -120,10 +109,18 @@ export function usePdfOperations() {
     }
   }, [getInvoicePdf]);
 
+  const closeViewer = useCallback(() => {
+    setViewerVisible(false);
+  }, []);
+
   return {
     downloadPdf,
     sharePdf,
     viewPdf,
     isDownloading,
+    viewerVisible,
+    currentPdfUri,
+    currentInvoiceNumber,
+    closeViewer,
   };
 }
