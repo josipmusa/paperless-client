@@ -66,6 +66,14 @@ export default function VoiceToInvoiceScreen() {
   } = usePdfOperations();
 
   useEffect(() => {
+    if (!viewerVisible) {
+      setTimeout(() => {
+        setStatusBarStyle("light");
+      }, 100);
+    }
+  }, [viewerVisible]);
+
+  useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
         setSeconds((s) => s + 1);

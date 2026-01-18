@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { Linking } from "react-native";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import Toast from "react-native-root-toast";

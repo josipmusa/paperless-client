@@ -147,7 +147,7 @@ export default function InvoicesScreen({ navigation }: Props) {
             {item.currency} {item.totalAmount.toFixed(2)}
           </Text>
           <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>Generated</Text>
+            <Text style={styles.statusText}>Completed</Text>
           </View>
         </View>
       </View>

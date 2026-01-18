@@ -102,7 +102,7 @@ export default function InvoiceDetailScreen({ navigation, route }: Props) {
           <View style={styles.infoRow}>
             <Text style={styles.label}>Status</Text>
             <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>Generated</Text>
+              <Text style={styles.statusText}>Completed</Text>
             </View>
           </View>
         </View>
