@@ -2,8 +2,7 @@ import React from "react";
 import { Modal, StyleSheet, View, Text, Pressable, ActivityIndicator } from "react-native";
 import { X } from "lucide-react-native";
 import { WebView } from "react-native-webview";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import {StatusBar} from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface PdfViewerProps {
   visible: boolean;
@@ -72,7 +71,6 @@ export function PdfViewer({ visible, pdfUri, invoiceNumber, onClose }: PdfViewer
           statusBarTranslucent={true} // Allows content to flow under status bar
           presentationStyle="fullScreen" // This helps iOS recognize the layout bounds immediately
       >
-        <StatusBar style="light"/>
         <View style={styles.container}>
 
           <View

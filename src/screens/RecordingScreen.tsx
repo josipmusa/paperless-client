@@ -13,7 +13,6 @@ import { InvoiceSuccessModal } from "../components/InvoiceSuccessModal";
 import { RecordingTips } from "../components/RecordingTips";
 import { PdfViewer } from "../components/PdfViewer";
 import { usePdfOperations } from "../hooks/usePdfOperations";
-import {setStatusBarStyle, StatusBar} from "expo-status-bar";
 
 type Invoice = {
   jobId: string;
@@ -66,14 +65,6 @@ export default function VoiceToInvoiceScreen() {
   } = usePdfOperations();
 
   useEffect(() => {
-    if (!viewerVisible) {
-      setTimeout(() => {
-        setStatusBarStyle("light");
-      }, 100);
-    }
-  }, [viewerVisible]);
-
-  useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
         setSeconds((s) => s + 1);
@@ -108,9 +99,6 @@ export default function VoiceToInvoiceScreen() {
     jobWebSocketService.connect();
     const unsubscribe = jobWebSocketService.subscribe(handleJobUpdate);
     fetchRecentInvoices();
-    setTimeout(() => {
-      setStatusBarStyle("light");
-    }, 0);
 
     return () => {
       unsubscribe();
@@ -375,7 +363,6 @@ export default function VoiceToInvoiceScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar style="light"/>
 
       {/* HEADER */}
       <View style={styles.header}>
