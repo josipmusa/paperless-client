@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList} from "react-native";
 import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from 'react-native-root-toast';
-import { Menu, Settings } from "lucide-react-native";
+import { Menu } from "lucide-react-native";
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync, requestRecordingPermissionsAsync } from "expo-audio";
 import { createInvoiceFromVoice, getInvoiceInformation, getInvoices } from "../api/invoiceApi";
 import { jobWebSocketService, JobUpdate, JobStatus } from "../websocket/jobWebSocket";
@@ -371,9 +371,9 @@ export default function VoiceToInvoiceScreen() {
 
       {/* HEADER */}
       <View style={styles.header}>
-        <Menu size={24} color="#e5e7eb" />
+        <View style={{ width: 24 }} />
         <Text style={styles.headerTitle}>Paperless</Text>
-        <Settings size={24} color="#e5e7eb" />
+        <View style={{ width: 24 }} />
       </View>
 
       {/* RECORD CARD */}

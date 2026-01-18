@@ -5,7 +5,8 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import CompanySetupScreen from '../screens/CompanySetupScreen';
 import HomeScreen from '../screens/HomeScreen';
-import RecordingScreen from '../screens/RecordingScreen';
+import InvoiceDetailScreen from '../screens/InvoiceDetailScreen';
+import MainTabNavigator from './MainTabNavigator';
 import { useAuthStore } from '../store/authStore';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -26,7 +27,8 @@ export default function RootNavigator() {
         <Stack.Screen name="CompanySetup" component={CompanySetupScreen} />
       ) : (
         <>
-          <Stack.Screen name="Recording" component={RecordingScreen} />
+          <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+          <Stack.Screen name="InvoiceDetail" component={InvoiceDetailScreen} />
           <Stack.Screen name="Home" component={HomeScreen} />
         </>
       )}

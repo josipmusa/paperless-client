@@ -7,6 +7,7 @@ export interface InvoiceData {
   customerName: string;
   totalAmount: number;
   currency: string;
+  createdAt?: string;
 }
 
 export interface PaginatedInvoiceDataResponse {
@@ -60,7 +61,16 @@ export const getInvoiceInformation = async (invoiceId: string): Promise<InvoiceD
   }
 };
 
-export const getInvoices = async (): Promise<InvoiceData[]> => {
-  const response = await apiClient.get<PaginatedInvoiceDataResponse>('/invoices');
+export const getInvoices = async (page = 0, size = 3): Promise<InvoiceData[]> => {
+  const response = await apiClient.get<PaginatedInvoiceDataResponse>('/invoices', {
+    params: { page, size },
+  });
   return response.data.content;
+};
+
+export const getPaginatedInvoices = async (page = 0, size = 50): Promise<PaginatedInvoiceDataResponse> => {
+  const response = await apiClient.get<PaginatedInvoiceDataResponse>('/invoices', {
+    params: { page, size },
+  });
+  return response.data;
 };

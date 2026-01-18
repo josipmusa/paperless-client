@@ -25,3 +25,13 @@ export const getMyCompany = async (): Promise<CompanyData | null> => {
     throw error;
   }
 };
+
+export const updateCompany = async (companyData: CompanyData) => {
+  const response = await apiClient.put('/companies/me', companyData);
+  return response.data;
+};
+
+export const deleteUserAccount = async () => {
+  const response = await apiClient.delete('/users/me');
+  return response.data;
+};
