@@ -1,5 +1,5 @@
 import apiClient from './axios';
-import { Platform } from 'react-native';
+import {Platform} from 'react-native';
 
 export interface InvoiceData {
   id: number;
@@ -19,6 +19,10 @@ export interface PaginatedInvoiceDataResponse {
     totalPages: number;
     number: number; // Current page index (0-based)
   };
+}
+
+export interface InvoicePdfPreviewResponse {
+  base64: string;
 }
 
 export const createInvoiceFromVoice = async (audioUri: string): Promise<string> => {
@@ -77,6 +81,11 @@ export const getPaginatedInvoices = async (page = 0, size = 50): Promise<Paginat
 };
 
 export const getInvoicePdfPreview = async (invoiceId: number): Promise<string> => {
-  const response = await apiClient.get<string>(`/invoices/previews/${invoiceId}`);
-  return response.data;
+  const response = await apiClient.get<InvoicePdfPreviewResponse>(`/invoices/previews/${invoiceId}`);
+  return response.data.base64
 };
+
+export const getSampleInvoicePdfPreview = async(): Promise<string> => {
+  const response = await apiClient.get<InvoicePdfPreviewResponse>('/invoices/sample-previews');
+  return response.data.base64;
+}

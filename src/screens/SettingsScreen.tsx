@@ -16,6 +16,8 @@ import { FileText } from 'lucide-react-native';
 import Toast from 'react-native-root-toast';
 import { useAuthStore } from '../store/authStore';
 import { CompanyData, getMyCompany, updateCompany, deleteUserAccount } from '../api/companyApi';
+import { PdfViewer } from "../components/PdfViewer";
+import {getSampleInvoicePdfPreview} from "../api/invoiceApi";
 
 export default function SettingsScreen() {
   const [isLoading, setIsLoading] = useState(false);
@@ -23,6 +25,8 @@ export default function SettingsScreen() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [previewBase64, setPreviewBase64] = useState('');
   const signOut = useAuthStore((state) => state.signOut);
 
   const { control, handleSubmit, formState: { errors }, reset, watch } = useForm<CompanyData>({
@@ -87,12 +91,21 @@ export default function SettingsScreen() {
     }
   };
 
-  const handlePreviewInvoice = () => {
-    Toast.show('Invoice preview coming soon', {
-      duration: Toast.durations.SHORT,
-      position: Toast.positions.BOTTOM,
-      backgroundColor: '#3b82f6',
-    });
+  const handlePreviewInvoice = async () => {
+    try {
+      setIsLoading(true);
+
+      const base64 = await getSampleInvoicePdfPreview();
+      setPreviewBase64(base64);
+      setViewerVisible(true);
+    } catch (error: any) {
+      Toast.show('Failed to load invoice preview', {
+        duration: Toast.durations.LONG,
+        backgroundColor: '#ef4444',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleLogout = () => {
@@ -307,6 +320,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Invoice Preview</Text>
           <Text style={styles.sectionSubtitle}>
             Preview how your company details appear on invoices
+            Note: This is a sample invoice and does not affect any real data.
           </Text>
 
           <TouchableOpacity style={styles.previewButton} onPress={handlePreviewInvoice}>
@@ -371,6 +385,12 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+      <PdfViewer
+          visible={viewerVisible}
+          pdfBase64={previewBase64}
+          invoiceNumber="INV-SAMPLE-0000"
+          onClose={() => setViewerVisible(false)}
+      />
     </SafeAreaView>
   );
 }
