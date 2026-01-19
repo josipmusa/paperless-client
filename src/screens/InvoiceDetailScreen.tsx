@@ -32,26 +32,28 @@ export default function InvoiceDetailScreen({ navigation, route }: Props) {
     sharePdf,
     viewPdf,
     viewerVisible,
-    currentPdfUri,
+    currentPdfBase64,
     currentInvoiceNumber,
     closeViewer,
+    pdfLoading,
+    pdfError,
   } = usePdfOperations();
 
   const handleDownload = async () => {
     setIsLoading(true);
-    await downloadPdf(invoice.pdfDownloadUrl, invoice.invoiceNumber);
+    await downloadPdf(invoice.id, invoice.invoiceNumber);
     setIsLoading(false);
   };
 
   const handleShare = async () => {
     setIsLoading(true);
-    await sharePdf(invoice.pdfDownloadUrl, invoice.invoiceNumber);
+    await sharePdf(invoice.id, invoice.invoiceNumber);
     setIsLoading(false);
   };
 
   const handleView = async () => {
     setIsLoading(true);
-    await viewPdf(invoice.pdfDownloadUrl, invoice.invoiceNumber);
+    await viewPdf(invoice.id, invoice.invoiceNumber);
     setIsLoading(false);
   };
 
@@ -165,9 +167,11 @@ export default function InvoiceDetailScreen({ navigation, route }: Props) {
       {/* PDF Viewer Modal */}
       <PdfViewer
         visible={viewerVisible}
-        pdfUri={currentPdfUri}
+        pdfBase64={currentPdfBase64}
         invoiceNumber={currentInvoiceNumber}
         onClose={closeViewer}
+        isLoading={pdfLoading}
+        error={pdfError}
       />
     </SafeAreaView>
   );

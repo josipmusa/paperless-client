@@ -2,14 +2,17 @@ import { useState, useCallback } from "react";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import Toast from "react-native-root-toast";
+import { getInvoicePdfPreview } from "../api/invoiceApi";
 
 export function usePdfOperations() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [viewerVisible, setViewerVisible] = useState(false);
-  const [currentPdfUri, setCurrentPdfUri] = useState<string>("");
+  const [currentPdfBase64, setCurrentPdfBase64] = useState<string>("");
   const [currentInvoiceNumber, setCurrentInvoiceNumber] = useState<string>("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
-  const getInvoicePdf = useCallback(async (pdfUrl: string, invoiceNumber: string): Promise<string> => {
+  const getInvoicePdf = useCallback(async (invoiceId: number, invoiceNumber: string): Promise<string> => {
     const fileName = `Invoice_${invoiceNumber}.pdf`;
     const fileUri = Paths.document.uri + fileName;
 
@@ -17,19 +20,23 @@ export function usePdfOperations() {
     if (file.exists) {
       return fileUri;
     }
-    const result = await File.downloadFileAsync(pdfUrl, file);
 
-    if (!result.exists || result.size <= 0) {
+    const base64Data = await getInvoicePdfPreview(invoiceId);
+    
+    await file.create();
+    await file.write(base64Data, { encoding: "base64" });
+
+    if (!file.exists || file.size <= 0) {
       throw new Error("Download failed");
     }
 
-    return result.uri;
+    return file.uri;
   }, []);
 
-  const downloadPdf = useCallback(async (pdfUrl: string, invoiceNumber: string) => {
+  const downloadPdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
     try {
       setIsDownloading(true);
-      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+      const uri = await getInvoicePdf(invoiceId, invoiceNumber);
 
       Toast.show(`Invoice ${invoiceNumber} is available offline`, {
         duration: Toast.durations.LONG,
@@ -54,7 +61,7 @@ export function usePdfOperations() {
     }
   }, [getInvoicePdf]);
 
-  const sharePdf = useCallback(async (pdfUrl: string, invoiceNumber: string) => {
+  const sharePdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
     try {
       const available = await Sharing.isAvailableAsync();
       if (!available) {
@@ -69,7 +76,7 @@ export function usePdfOperations() {
         return;
       }
 
-      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
+      const uri = await getInvoicePdf(invoiceId, invoiceNumber);
 
       await Sharing.shareAsync(uri, {
         mimeType: "application/pdf",
@@ -89,14 +96,20 @@ export function usePdfOperations() {
     }
   }, [getInvoicePdf]);
 
-  const viewPdf = useCallback(async (pdfUrl: string, invoiceNumber: string) => {
+  const viewPdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
     try {
-      const uri = await getInvoicePdf(pdfUrl, invoiceNumber);
-      setCurrentPdfUri(uri);
+      setPdfLoading(true);
+      setPdfError(null);
       setCurrentInvoiceNumber(invoiceNumber);
       setViewerVisible(true);
+      
+      const base64Data = await getInvoicePdfPreview(invoiceId);
+      setCurrentPdfBase64(base64Data);
+      setPdfLoading(false);
     } catch (error) {
-      console.error("Failed to open PDF:", error);
+      console.error("Failed to load PDF:", error);
+      setPdfError("Failed to load PDF. Please try again.");
+      setPdfLoading(false);
       Toast.show("Failed to open PDF. Please try again.", {
         duration: Toast.durations.LONG,
         position: Toast.positions.BOTTOM,
@@ -106,10 +119,12 @@ export function usePdfOperations() {
         textColor: "#ffffff",
       });
     }
-  }, [getInvoicePdf]);
+  }, []);
 
   const closeViewer = useCallback(() => {
     setViewerVisible(false);
+    setCurrentPdfBase64("");
+    setPdfError(null);
   }, []);
 
   return {
@@ -118,8 +133,10 @@ export function usePdfOperations() {
     viewPdf,
     isDownloading,
     viewerVisible,
-    currentPdfUri,
+    currentPdfBase64,
     currentInvoiceNumber,
     closeViewer,
+    pdfLoading,
+    pdfError,
   };
 }

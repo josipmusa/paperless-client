@@ -7,17 +7,16 @@ import { JobStatus } from "../websocket/jobWebSocket";
 interface InvoiceCardProps {
     index: number;
     jobId: string;
-    invoiceId?: string;
+    invoiceId?: number;
     invoiceNumber?: string;
     customerName?: string;
     amount?: string;
     status: JobStatus;
     fetchFailed?: boolean;
-    pdfDownloadUrl?: string;
-    onRetryFetch: (jobId: string, invoiceId: string) => void;
-    onDownload: (pdfUrl: string, invoiceNumber: string) => void;
-    onShare: (pdfUrl: string, invoiceNumber: string) => void;
-    onView: (pdfUrl: string, invoiceNumber: string) => void;
+    onRetryFetch: (jobId: string, invoiceId: number) => void;
+    onDownload: (invoiceId: number, invoiceNumber: string) => void;
+    onShare: (invoiceId: number, invoiceNumber: string) => void;
+    onView: (invoiceId: number, invoiceNumber: string) => void;
 }
 
 // Modern "Pill" colors with background opacity
@@ -45,7 +44,6 @@ export function InvoiceCard({
                                 amount,
                                 status,
                                 fetchFailed,
-                                pdfDownloadUrl,
                                 onRetryFetch,
                                 onDownload,
                                 onShare,
@@ -53,6 +51,7 @@ export function InvoiceCard({
                             }: InvoiceCardProps) {
     const fadeAnim = useRef(new Animated.Value(0)).current; // Initial opacity 0
     const translateY = useRef(new Animated.Value(20)).current; // Start 20 pixels down
+    const statusPulseAnim = useRef(new Animated.Value(1)).current; // For status badge pulsing
 
     useEffect(() => {
         // Determine delay: only delay the first few items to keep it snappy
@@ -75,7 +74,28 @@ export function InvoiceCard({
         ]).start();
     }, []);
 
-    const canInteract = status === "DONE" && !fetchFailed && pdfDownloadUrl && invoiceNumber;
+    useEffect(() => {
+        if (status === "PENDING" || status === "RUNNING") {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(statusPulseAnim, {
+                        toValue: 0.5,
+                        duration: 800,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(statusPulseAnim, {
+                        toValue: 1,
+                        duration: 800,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
+        } else {
+            statusPulseAnim.setValue(1);
+        }
+    }, [status]);
+
+    const canInteract = status === "DONE" && !fetchFailed && invoiceId && invoiceNumber;
     const statusColors = getStatusColors(status);
 
     return (
@@ -101,11 +121,11 @@ export function InvoiceCard({
                     </View>
 
                     {/* Right Side: Status Badge */}
-                    <View style={[styles.statusBadge, { backgroundColor: statusColors.bg }]}>
+                    <Animated.View style={[styles.statusBadge, { backgroundColor: statusColors.bg, opacity: statusPulseAnim }]}>
                         <Text style={[styles.statusText, { color: statusColors.text }]}>
                             {status === "DONE" ? "COMPLETED" : status}
                         </Text>
-                    </View>
+                    </Animated.View>
                 </View>
 
                 {/* Amount Row (Aligned Right or Left depending on preference, currently Right for emphasis) */}
@@ -138,7 +158,7 @@ export function InvoiceCard({
                     icon={<Download size={18} color={canInteract ? "#60a5fa" : "#475569"} />}
                     label="Save"
                     disabled={!canInteract}
-                    onPress={() => onDownload(pdfDownloadUrl!, invoiceNumber!)}
+                    onPress={() => onDownload(invoiceId!, invoiceNumber!)}
                 />
 
                 {/* Vertical Divider between buttons */}
@@ -148,7 +168,7 @@ export function InvoiceCard({
                     icon={<Share2 size={18} color={canInteract ? "#4ade80" : "#475569"} />}
                     label="Share"
                     disabled={!canInteract}
-                    onPress={() => onShare(pdfDownloadUrl!, invoiceNumber!)}
+                    onPress={() => onShare(invoiceId!, invoiceNumber!)}
                 />
 
                 <View style={styles.verticalDivider} />
@@ -157,7 +177,7 @@ export function InvoiceCard({
                     icon={<Eye size={18} color={canInteract ? "#a78bfa" : "#475569"} />}
                     label="View"
                     disabled={!canInteract}
-                    onPress={() => onView(pdfDownloadUrl!, invoiceNumber!)}
+                    onPress={() => onView(invoiceId!, invoiceNumber!)}
                 />
             </View>
         </Animated.View>

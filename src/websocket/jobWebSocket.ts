@@ -7,7 +7,7 @@ export type JobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
 export interface JobUpdate {
   jobId: string;
   status: JobStatus;
-  resultRef?: string;
+  resultRef?: number;
 }
 
 type JobUpdateCallback = (update: JobUpdate) => void;
