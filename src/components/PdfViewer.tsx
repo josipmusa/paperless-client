@@ -6,40 +6,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface PdfViewerProps {
   visible: boolean;
-  pdfUri: string;
+  pdfBase64: string;
   invoiceNumber: string;
   onClose: () => void;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
-export function PdfViewer({ visible, pdfUri, invoiceNumber, onClose }: PdfViewerProps) {
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [base64Data, setBase64Data] = React.useState<string>("");
+export function PdfViewer({ visible, pdfBase64, invoiceNumber, onClose, isLoading: externalLoading = false, error: externalError = null }: PdfViewerProps) {
   const insets = useSafeAreaInsets();
-
-  React.useEffect(() => {
-    if (visible && pdfUri) {
-      setIsLoading(true);
-      setError(null);
-      loadPdfAsBase64();
-    }
-  }, [visible, pdfUri]);
-
-  const loadPdfAsBase64 = async () => {
-    try {
-      // Note: Ensure your expo-file-system logic works for your environment.
-      // Standard approach usually uses readAsStringAsync with encoding.
-      const { File } = await import("expo-file-system");
-      const file = new File(pdfUri);
-      const base64String = await file.base64();
-      setBase64Data(base64String);
-      setIsLoading(false);
-    } catch (err) {
-      console.error("Error loading PDF:", err);
-      setError("Failed to load PDF. Please try again.");
-      setIsLoading(false);
-    }
-  };
+  const isLoading = externalLoading;
+  const error = externalError;
 
   const getPdfHtml = () => {
     return `
@@ -56,7 +33,7 @@ export function PdfViewer({ visible, pdfUri, invoiceNumber, onClose }: PdfViewer
         </head>
         <body>
           <div id="pdf-container">
-            <embed src="data:application/pdf;base64,${base64Data}" type="application/pdf" width="100%" height="100%" />
+            <embed src="data:application/pdf;base64,${pdfBase64}" type="application/pdf" width="100%" height="100%" />
           </div>
         </body>
       </html>
@@ -105,14 +82,13 @@ export function PdfViewer({ visible, pdfUri, invoiceNumber, onClose }: PdfViewer
                 </View>
             )}
 
-            {!isLoading && !error && base64Data && (
+            {!isLoading && !error && pdfBase64 && (
                 <WebView
                     source={{ html: getPdfHtml() }}
                     style={styles.pdf}
                     originWhitelist={['*']}
                     onError={(syntheticEvent) => {
                       const { nativeEvent } = syntheticEvent;
-                      setError("Failed to display PDF. Please try again.");
                       console.error("WebView Error:", nativeEvent);
                     }}
                 />

@@ -4,7 +4,7 @@ import { JobStatus, JobUpdate, jobWebSocketService } from '../websocket/jobWebSo
 export interface Job {
   id: string;
   status: JobStatus;
-  resultRef?: string;
+  resultRef?: number;
 }
 
 interface JobState {

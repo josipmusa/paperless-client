@@ -16,13 +16,12 @@ import { usePdfOperations } from "../hooks/usePdfOperations";
 
 type Invoice = {
   jobId: string;
-  invoiceId?: string;
+  invoiceId?: number;
   invoiceNumber?: string;
   customerName?: string;
   amount?: string;
   status: JobStatus;
   fetchFailed?: boolean;
-  pdfDownloadUrl?: string;
 };
 
 export default function VoiceToInvoiceScreen() {
@@ -31,7 +30,7 @@ export default function VoiceToInvoiceScreen() {
   const [seconds, setSeconds] = useState(0);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [completedInvoiceId, setCompletedInvoiceId] = useState<string | null>(null);
+  const [completedInvoiceId, setCompletedInvoiceId] = useState<number | null>(null);
   const [isGettingReady, setIsGettingReady] = useState(false);
   
   const isStartingRef = useRef(false);
@@ -59,9 +58,11 @@ export default function VoiceToInvoiceScreen() {
     sharePdf, 
     viewPdf, 
     viewerVisible, 
-    currentPdfUri, 
+    currentPdfBase64, 
     currentInvoiceNumber, 
-    closeViewer 
+    closeViewer,
+    pdfLoading,
+    pdfError,
   } = usePdfOperations();
 
   useEffect(() => {
@@ -82,12 +83,11 @@ export default function VoiceToInvoiceScreen() {
       const invoiceData = await getInvoices();
       const recentInvoices: Invoice[] = invoiceData.map((invoice) => ({
         jobId: `existing-${invoice.invoiceNumber}`,
-        invoiceId: invoice.invoiceNumber,
+        invoiceId: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
         customerName: invoice.customerName,
         amount: `${invoice.currency} ${invoice.totalAmount.toFixed(2)}`,
         status: "DONE",
-        pdfDownloadUrl: invoice.pdfDownloadUrl,
       }));
       setInvoices(recentInvoices);
     } catch (error) {
@@ -132,7 +132,6 @@ export default function VoiceToInvoiceScreen() {
                   customerName: invoiceData.customerName,
                   amount: `${invoiceData.currency} ${invoiceData.totalAmount.toFixed(2)}`,
                   fetchFailed: false,
-                  pdfDownloadUrl: invoiceData.pdfDownloadUrl,
                 };
               }
               return inv;
@@ -316,7 +315,7 @@ export default function VoiceToInvoiceScreen() {
     }
   };
 
-  const retryFetchInvoice = async (jobId: string, invoiceId: string) => {
+  const retryFetchInvoice = async (jobId: string, invoiceId: number) => {
     try {
       const invoiceData = await getInvoiceInformation(invoiceId);
       
@@ -433,30 +432,32 @@ export default function VoiceToInvoiceScreen() {
         visible={showSuccess}
         onClose={() => setShowSuccess(false)}
         onDownload={() => {
-          if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
-            downloadPdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+          if (completedInvoice?.invoiceId && completedInvoice?.invoiceNumber) {
+            downloadPdf(completedInvoice.invoiceId, completedInvoice.invoiceNumber);
           }
         }}
         onView={() => {
-          if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
-            viewPdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+          if (completedInvoice?.invoiceId && completedInvoice?.invoiceNumber) {
+            viewPdf(completedInvoice.invoiceId, completedInvoice.invoiceNumber);
             setShowSuccess(false); // Close modal when viewing
           }
         }}
         onShare={() => {
-          if (completedInvoice?.pdfDownloadUrl && completedInvoice?.invoiceNumber) {
-            sharePdf(completedInvoice.pdfDownloadUrl, completedInvoice.invoiceNumber);
+          if (completedInvoice?.invoiceId && completedInvoice?.invoiceNumber) {
+            sharePdf(completedInvoice.invoiceId, completedInvoice.invoiceNumber);
           }
         }}
-        canInteract={!!completedInvoice?.pdfDownloadUrl}
+        canInteract={!!completedInvoice?.invoiceId}
       />
 
       {/* PDF VIEWER */}
       <PdfViewer
         visible={viewerVisible}
-        pdfUri={currentPdfUri}
+        pdfBase64={currentPdfBase64}
         invoiceNumber={currentInvoiceNumber}
         onClose={closeViewer}
+        isLoading={pdfLoading}
+        error={pdfError}
       />
     </SafeAreaView>
   );
