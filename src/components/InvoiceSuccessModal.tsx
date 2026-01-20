@@ -75,13 +75,32 @@ export function InvoiceSuccessModal({ visible, onClose, onDownload, onShare, onV
       </BlurWrapper>
   );
 
-  return Platform.OS === 'web'
-      ? (visible ? <View style={styles.webOverlay}>{Content}</View> : null)
-      : (
-          <Modal visible={visible} transparent animationType="fade">
-            {Content}
-          </Modal>
-      );
+  if (Platform.OS === 'web') {
+    if (!visible) return null;
+    
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      }}>
+        {Content}
+      </div>
+    );
+  }
+  
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      {Content}
+    </Modal>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -181,18 +200,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     marginVertical: 8,
   },
-  webOverlay: {
-    position: 'static',
-    inset: 0,
-    zIndex: 1000,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
   webBackdrop: {
-    backgroundColor: 'rgba(15, 23, 42, 0.85)', // Slate-900-ish
+    backgroundColor: '#1e293b',
     padding: 24,
+    maxWidth: 400,
+    width: '100%',
     borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   disabledBtn: {
     opacity: 0.5,

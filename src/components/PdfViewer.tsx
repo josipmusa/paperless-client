@@ -88,13 +88,31 @@ export function PdfViewer({ visible, pdfBase64, invoiceNumber, onClose, isLoadin
       </View>
   );
 
-  return Platform.OS === 'web'
-      ? (visible ? <View style={styles.webOverlay}>{Content}</View> : null)
-      : (
-          <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent={true} presentationStyle="fullScreen">
-            {Content}
-          </Modal>
-      );
+  if (Platform.OS === 'web') {
+    if (!visible) return null;
+    
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 9999,
+        backgroundColor: '#0f172a',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        {Content}
+      </div>
+    );
+  }
+  
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent={true} presentationStyle="fullScreen">
+      {Content}
+    </Modal>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -175,14 +193,5 @@ const styles = StyleSheet.create({
     color: "#f1f5f9",
     fontWeight: "600",
     fontSize: 14,
-  },
-  webOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 9999,
-    backgroundColor: '#0f172a',
   },
 });
