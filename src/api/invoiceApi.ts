@@ -38,19 +38,12 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<string> 
     console.log('[InvoiceAPI] Blob created, type:', blob.type, 'size:', blob.size);
     
     // Determine the file extension and ensure proper MIME type
-    const mimeType = blob.type;
-    const extension = mimeType.includes('webm') ? 'webm' : 'ogg';
-    
-    // Create a new blob with explicit audio MIME type if needed
-    const audioBlob = blob.type.startsWith('audio/') 
-      ? blob 
-      : new Blob([blob], { type: mimeType.includes('webm') ? 'audio/webm' : 'audio/ogg' });
-
-    // Create a File object with proper MIME type
-    const file = new File([audioBlob], `recording.${extension}`, { 
-      type: audioBlob.type 
-    });
-    
+    let mimeType = blob.type;
+    if (!mimeType.startsWith('audio/')) {
+      // force a proper audio MIME
+      mimeType = blob.type.includes('webm') ? 'audio/webm' : 'audio/ogg';
+    }
+    const file = new File([blob], `recording.${mimeType.split('/')[1]}`, { type: mimeType });
     formData.append('file', file);
   } else {
     // Mobile: Use file URI

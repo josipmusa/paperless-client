@@ -285,15 +285,22 @@ export default function VoiceToInvoiceScreen() {
     recordingStarted.current = false;
     setIsRecording(false);
 
-    console.log('[RecordingScreen] Stopping recording, duration:', duration);
-
     haptics.stop();
 
     try {
       if (Platform.OS === 'web') {
-        console.log('[RecordingScreen] Calling webRecorder.stopRecording...');
-        await webRecorder.stopRecording();
-        console.log('[RecordingScreen] webRecorder.stopRecording completed');
+        const blob = await webRecorder.stopRecording();
+        if (!blob) {
+          Toast.show('Failed to record audio', {
+            duration: Toast.durations.LONG,
+            position: Toast.positions.BOTTOM,
+            shadow: true,
+            animation: true,
+            backgroundColor: '#ef4444',
+            textColor: '#ffffff',
+          });
+          return;
+        }
       } else {
         await recorder!.stop();
       }
@@ -302,7 +309,6 @@ export default function VoiceToInvoiceScreen() {
     }
 
     if (duration < 500 || cancelled) {
-      console.log('[RecordingScreen] Recording too short or cancelled');
       haptics.cancel();
       if (Platform.OS === 'web') {
         webRecorder.clearRecording();
@@ -329,12 +335,10 @@ export default function VoiceToInvoiceScreen() {
       return;
     }
 
-    let uri: string | null = null;
+    let uri: string | null;
     
     if (Platform.OS === 'web') {
-      console.log('[RecordingScreen] Getting recording URI...');
       uri = await webRecorder.getRecordingUri();
-      console.log('[RecordingScreen] Got URI:', uri ? `${uri.substring(0, 50)}...` : 'null');
       if (!uri) {
         Toast.show('Failed to process recording', {
           duration: Toast.durations.LONG,
@@ -352,16 +356,13 @@ export default function VoiceToInvoiceScreen() {
     }
     
     if (!uri) {
-      console.log('[RecordingScreen] No URI available');
       return;
     }
 
-    console.log('[RecordingScreen] Setting processing state and calling API...');
     setIsProcessing(true);
 
     try {
       const jobId = await createInvoiceFromVoice(uri);
-      console.log('[RecordingScreen] Invoice created, jobId:', jobId);
       setInvoices((prev) => [
         { jobId, customerName: "Processing...", status: "PENDING" },
         ...prev.slice(0, 2),
@@ -382,20 +383,19 @@ export default function VoiceToInvoiceScreen() {
   };
 
   const forceStopRecording = async () => {
-    if (recordingStarted.current || isStartingRef.current) {
-      recordingStarted.current = false;
-      isStartingRef.current = false;
-      setIsRecording(false);
+    recordingStarted.current = false;
+    isStartingRef.current = false;
+    setIsRecording(false);
+    haptics.cancel();
 
-      haptics.cancel();
-
+    if (Platform.OS === 'web') {
       try {
-        if (Platform.OS === 'web') {
-          webRecorder.stopRecording();
-          webRecorder.clearRecording();
-        } else {
-          await recorder!.stop();
-        }
+        await webRecorder.stopRecording();
+      } catch {}
+      webRecorder.clearRecording();
+    } else {
+      try {
+        await recorder!.stop();
       } catch {}
     }
   };

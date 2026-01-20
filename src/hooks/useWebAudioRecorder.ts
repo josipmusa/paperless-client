@@ -1,111 +1,67 @@
-import { useRef, useState, useCallback } from 'react';
-import { Platform } from 'react-native';
+import {useCallback, useRef, useState} from "react";
 
 export function useWebAudioRecorder() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+
+  const audioBlobRef = useRef<Blob | null>(null);
 
   const startRecording = useCallback(async () => {
-    if (Platform.OS !== 'web') return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Use webm audio format which is widely supported
-      let mimeType = 'audio/webm;codecs=opus';
-      
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/webm';
-      }
-      
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/ogg;codecs=opus';
-      }
-      
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/ogg';
-      }
+    let mimeType = "audio/webm;codecs=opus";
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "audio/webm";
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "audio/ogg;codecs=opus";
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "audio/ogg";
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+    const recorder = new MediaRecorder(stream, { mimeType });
+    mediaRecorderRef.current = recorder;
+    audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
+    recorder.addEventListener("dataavailable", (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    });
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
-        setAudioBlob(blob);
-        
-        // Stop all tracks to release the microphone
-        stream.getTracks().forEach(track => track.stop());
-      };
+    recorder.addEventListener("stop", () => {
+      const blob = new Blob(audioChunksRef.current, { type: mimeType });
+      audioBlobRef.current = blob; // <-- store blob immediately
+      setIsRecording(false);
+    });
 
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Error starting recording:', error);
-      throw error;
-    }
+    recorder.start(500);
+    setIsRecording(true);
   }, []);
 
-  const stopRecording = useCallback((): Promise<void> => {
+  const stopRecording = useCallback(async (): Promise<Blob | null> => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return null;
+
     return new Promise((resolve) => {
-      if (Platform.OS !== 'web' || !mediaRecorderRef.current) {
-        resolve();
-        return;
-      }
-
-      if (mediaRecorderRef.current.state === 'inactive') {
-        resolve();
-        return;
-      }
-
-      // Set up listener for when stopping is complete
-      const currentRecorder = mediaRecorderRef.current;
-      const originalOnStop = currentRecorder.onstop;
-      
-      currentRecorder.onstop = (event) => {
-        console.log('[WebAudioRecorder] Recording stopped, audio chunks:', audioChunksRef.current.length);
-        if (originalOnStop) {
-          originalOnStop.call(currentRecorder, event);
-        }
-        setIsRecording(false);
-        // Small delay to ensure blob is set
-        setTimeout(() => {
-          console.log('[WebAudioRecorder] Stop complete');
-          resolve();
-        }, 100);
-      };
-
-      console.log('[WebAudioRecorder] Stopping recording...');
-      currentRecorder.stop();
+      recorder.addEventListener(
+          "stop",
+          () => {
+            resolve(audioBlobRef.current);
+          },
+          { once: true }
+      );
+      recorder.stop();
     });
   }, []);
 
   const getRecordingUri = useCallback(async (): Promise<string | null> => {
-    console.log('[WebAudioRecorder] Getting recording URI, blob exists:', !!audioBlob);
-    if (!audioBlob) return null;
+    const blob = audioBlobRef.current;
+    if (!blob) return null;
 
-    // Convert blob to base64 data URL
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        console.log('[WebAudioRecorder] URI created, length:', result.length);
-        resolve(result);
-      };
-      reader.readAsDataURL(audioBlob);
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
     });
-  }, [audioBlob]);
+  }, []);
 
   const clearRecording = useCallback(() => {
-    setAudioBlob(null);
+    audioBlobRef.current = null;
     audioChunksRef.current = [];
   }, []);
 
