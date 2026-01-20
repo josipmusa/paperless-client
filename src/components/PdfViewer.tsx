@@ -177,12 +177,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   webOverlay: {
-    position: 'static',
-    inset: 0,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 9999,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#0f172a',
   },
 });
