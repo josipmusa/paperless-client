@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated, PanResponder, Platform } from "react-native";
+import { View, Text, StyleSheet, Animated, PanResponder, Platform, Pressable } from "react-native";
 import { Mic, Loader2, ChevronUp, ChevronsLeft, ChevronsRight } from "lucide-react-native";
 
 interface RecordingButtonProps {
@@ -157,7 +157,11 @@ export function RecordingButton({
         </View>
       ) : (
         <Text style={styles.subtitle}>
-          {isGettingReady ? "Get ready..." : "Press and hold to record"}
+          {isGettingReady 
+            ? "Get ready..." 
+            : Platform.OS === 'web' 
+              ? "Click and hold to record" 
+              : "Press and hold to record"}
         </Text>
       )}
 
@@ -206,8 +210,11 @@ export function RecordingButton({
             </>
           )}
 
-          <Animated.View
-              {...(isProcessing ? {} : panResponder.panHandlers)}
+          {Platform.OS === 'web' ? (
+            <Pressable
+              onPressIn={onStartRecording}
+              onPressOut={() => onStopRecording(false)}
+              disabled={isProcessing}
               style={[
                 styles.micButton,
                 {
@@ -216,33 +223,64 @@ export function RecordingButton({
                     : isGettingReady 
                     ? "#f59e0b" 
                     : "#2563eb",
-                  transform: [
-                    { scale: isGettingReady ? pulseAnim : scaleAnim }
-                  ],
                   opacity: isProcessing ? 0.4 : 1,
                 },
               ]}
-              pointerEvents={isProcessing ? "none" : "auto"}
-          >
-            <Mic size={36} color="white" />
-            
-            {/* Cancel swipe indicator - overlays on button */}
-            <Animated.View
-              style={[
-                styles.swipeOverlay,
-                { 
-                  opacity: cancelIndicatorOpacity,
-                  backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                }
-              ]}
             >
-              <Text style={styles.swipeText}>✕</Text>
+              <Mic size={36} color="white" />
+              
+              {/* Cancel swipe indicator - overlays on button */}
+              <Animated.View
+                style={[
+                  styles.swipeOverlay,
+                  { 
+                    opacity: cancelIndicatorOpacity,
+                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                  }
+                ]}
+              >
+                <Text style={styles.swipeText}>✕</Text>
+              </Animated.View>
+            </Pressable>
+          ) : (
+            <Animated.View
+                {...(isProcessing ? {} : panResponder.panHandlers)}
+                style={[
+                  styles.micButton,
+                  {
+                    backgroundColor: isRecording 
+                      ? "#dc2626" 
+                      : isGettingReady 
+                      ? "#f59e0b" 
+                      : "#2563eb",
+                    transform: [
+                      { scale: isGettingReady ? pulseAnim : scaleAnim }
+                    ],
+                    opacity: isProcessing ? 0.4 : 1,
+                  },
+                ]}
+                pointerEvents={isProcessing ? "none" : "auto"}
+            >
+              <Mic size={36} color="white" />
+              
+              {/* Cancel swipe indicator - overlays on button */}
+              <Animated.View
+                style={[
+                  styles.swipeOverlay,
+                  { 
+                    opacity: cancelIndicatorOpacity,
+                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                  }
+                ]}
+              >
+                <Text style={styles.swipeText}>✕</Text>
+              </Animated.View>
             </Animated.View>
-          </Animated.View>
+          )}
         </View>
 
-        {/* Animated arrows for slide to cancel gesture */}
-        {isRecording && (
+        {/* Animated arrows for slide to cancel gesture - only on mobile */}
+        {isRecording && Platform.OS !== 'web' && (
           <View style={styles.gestureIndicators}>
             {/* Up arrow */}
             <Animated.View
@@ -320,7 +358,9 @@ export function RecordingButton({
       </View>
 
       <Text style={styles.helperText}>
-        Hold to record • Slide to cancel
+        {Platform.OS === 'web' 
+          ? "Hold mouse button or tap and hold to record"
+          : "Hold to record • Slide to cancel"}
       </Text>
     </View>
   );
@@ -380,6 +420,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     overflow: "hidden",
     zIndex: 2,
+    ...(Platform.OS === "web" && {
+      cursor: "pointer",
+      userSelect: "none",
+    }),
   },
   pulseRing: {
     position: "absolute",

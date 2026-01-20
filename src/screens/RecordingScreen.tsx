@@ -13,6 +13,7 @@ import { InvoiceSuccessModal } from "../components/InvoiceSuccessModal";
 import { RecordingTips } from "../components/RecordingTips";
 import { PdfViewer } from "../components/PdfViewer";
 import { usePdfOperations } from "../hooks/usePdfOperations";
+import { useWebAudioRecorder } from "../hooks/useWebAudioRecorder";
 
 type Invoice = {
   jobId: string;
@@ -61,7 +62,9 @@ export default function VoiceToInvoiceScreen() {
     },
   };
   
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = Platform.OS === 'web' ? null : useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const webRecorder = useWebAudioRecorder();
+  
   const { 
     downloadPdf, 
     sharePdf, 
@@ -189,18 +192,6 @@ export default function VoiceToInvoiceScreen() {
   };
 
   const startRecording = async () => {
-    if (Platform.OS === 'web') {
-      Toast.show('Audio recording is only available on mobile devices', {
-        duration: Toast.durations.LONG,
-        position: Toast.positions.BOTTOM,
-        shadow: true,
-        animation: true,
-        backgroundColor: '#f59e0b',
-        textColor: '#ffffff',
-      });
-      return;
-    }
-    
     if (isProcessing || isStartingRef.current || isRecording) return;
 
     isStartingRef.current = true;
@@ -210,45 +201,72 @@ export default function VoiceToInvoiceScreen() {
     haptics.start();
 
     try {
-      const { granted } = await requestRecordingPermissionsAsync();
-      if (!granted) {
+      if (Platform.OS === 'web') {
+        // Web recording
+        await webRecorder.startRecording();
+        
+        if (shouldCancelStartRef.current) {
+          isStartingRef.current = false;
+          setIsGettingReady(false);
+          webRecorder.stopRecording();
+          return;
+        }
+
+        recordingStartTime.current = Date.now();
+        recordingStarted.current = true;
         isStartingRef.current = false;
         setIsGettingReady(false);
-        return;
-      }
+        setIsRecording(true);
+      } else {
+        // Mobile recording
+        const { granted } = await requestRecordingPermissionsAsync();
+        if (!granted) {
+          isStartingRef.current = false;
+          setIsGettingReady(false);
+          return;
+        }
 
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-      });
+        await setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+        });
 
-      if (shouldCancelStartRef.current) {
-        isStartingRef.current = false;
-        setIsGettingReady(false);
-        return;
-      }
-
-      await recorder.prepareToRecordAsync();
-
-      setTimeout(() => {
         if (shouldCancelStartRef.current) {
           isStartingRef.current = false;
           setIsGettingReady(false);
           return;
         }
 
-        recorder.record();
-        recordingStartTime.current = Date.now();
-        recordingStarted.current = true;
-        isStartingRef.current = false;
-        setIsGettingReady(false);
-        setIsRecording(true);
-      }, 150);
+        await recorder!.prepareToRecordAsync();
+
+        setTimeout(() => {
+          if (shouldCancelStartRef.current) {
+            isStartingRef.current = false;
+            setIsGettingReady(false);
+            return;
+          }
+
+          recorder!.record();
+          recordingStartTime.current = Date.now();
+          recordingStarted.current = true;
+          isStartingRef.current = false;
+          setIsGettingReady(false);
+          setIsRecording(true);
+        }, 150);
+      }
     } catch (error) {
       isStartingRef.current = false;
       recordingStarted.current = false;
       setIsGettingReady(false);
       console.error("Failed to start recording:", error);
+      Toast.show('Failed to access microphone. Please grant permission.', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
@@ -270,11 +288,18 @@ export default function VoiceToInvoiceScreen() {
     haptics.stop();
 
     try {
-      await recorder.stop();
+      if (Platform.OS === 'web') {
+        webRecorder.stopRecording();
+      } else {
+        await recorder!.stop();
+      }
     } catch {}
 
     if (duration < 500 || cancelled) {
       haptics.cancel();
+      if (Platform.OS === 'web') {
+        webRecorder.clearRecording();
+      }
       if (cancelled) {
         Toast.show('Recording cancelled', {
           duration: Toast.durations.SHORT,
@@ -297,7 +322,15 @@ export default function VoiceToInvoiceScreen() {
       return;
     }
 
-    const uri = recorder.uri;
+    let uri: string | null = null;
+    
+    if (Platform.OS === 'web') {
+      uri = await webRecorder.getRecordingUri();
+      webRecorder.clearRecording();
+    } else {
+      uri = recorder!.uri;
+    }
+    
     if (!uri) return;
 
     setIsProcessing(true);
@@ -331,7 +364,12 @@ export default function VoiceToInvoiceScreen() {
       haptics.cancel();
 
       try {
-        await recorder.stop();
+        if (Platform.OS === 'web') {
+          webRecorder.stopRecording();
+          webRecorder.clearRecording();
+        } else {
+          await recorder!.stop();
+        }
       } catch {}
     }
   };
