@@ -1,0 +1,4 @@
+EXPO_PUBLIC_SUPABASE_URL=<your-supabase-url>
+EXPO_PUBLIC_SUPABASE_KEY=<your-supabase-key>
+EXPO_PUBLIC_API_URL=<paperless-backend-url>
+EXPO_PUBLIC_WS_URL=<paperless-backend-websocket-url>
