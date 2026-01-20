@@ -26,17 +26,14 @@ export interface InvoicePdfPreviewResponse {
 }
 
 export const createInvoiceFromVoice = async (audioUri: string): Promise<string> => {
-  console.log('[InvoiceAPI] Creating invoice from voice, URI length:', audioUri.length);
   const formData = new FormData();
   
   if (Platform.OS === 'web' && audioUri.startsWith('data:')) {
     // Web: Convert data URL to blob
-    console.log('[InvoiceAPI] Converting data URL to blob...');
     const response = await fetch(audioUri);
     const blob = await response.blob();
     
-    console.log('[InvoiceAPI] Blob created, type:', blob.type, 'size:', blob.size);
-    
+
     // Determine the file extension and ensure proper MIME type
     let mimeType = blob.type;
     if (!mimeType.startsWith('audio/')) {
@@ -58,14 +55,12 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<string> 
     } as any);
   }
 
-  console.log('[InvoiceAPI] Posting to /invoices...');
   const response = await apiClient.post<string>('/invoices', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   });
 
-  console.log('[InvoiceAPI] Response received, jobId:', response.data);
   return response.data;
 };
 
