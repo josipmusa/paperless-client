@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import * as Haptics from "expo-haptics";
-import { StyleSheet, Text, View, Animated, Pressable } from "react-native";
+import {StyleSheet, Text, View, Animated, Pressable, Platform} from "react-native";
 import { Download, Eye, Share2, AlertCircle } from "lucide-react-native";
 import { JobStatus } from "../websocket/jobWebSocket";
 
@@ -75,8 +75,10 @@ export function InvoiceCard({
     }, []);
 
     useEffect(() => {
+        let pulseAnimation: Animated.CompositeAnimation | null = null;
+
         if (status === "PENDING" || status === "RUNNING") {
-            Animated.loop(
+            pulseAnimation = Animated.loop(
                 Animated.sequence([
                     Animated.timing(statusPulseAnim, {
                         toValue: 0.5,
@@ -89,10 +91,15 @@ export function InvoiceCard({
                         useNativeDriver: true,
                     }),
                 ])
-            ).start();
+            );
+            pulseAnimation.start();
         } else {
             statusPulseAnim.setValue(1);
         }
+
+        return () => {
+            pulseAnimation?.stop();
+        };
     }, [status]);
 
     const canInteract = status === "DONE" && !fetchFailed && invoiceId && invoiceNumber;
@@ -205,7 +212,9 @@ function ActionButton({ icon, label, disabled, onPress }: any) {
 
     const handlePress = () => {
         if (disabled) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (Platform.OS !== "web") {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
         onPress();
     };
 
@@ -319,6 +328,9 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
+        ...(Platform.OS === "web" && {
+            cursor: "pointer",
+        }),
     },
     actionBtnContent: {
         flexDirection: "row",

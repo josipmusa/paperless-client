@@ -1,57 +1,87 @@
-import React from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import React, {useEffect} from 'react';
+import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
 import { CheckCircle2, Eye, Share2, Download, X } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import { Platform } from 'react-native';
+
+function BlurWrapper({ children }: { children: React.ReactNode }) {
+  if (Platform.OS === 'web') {
+    return (
+        <View style={styles.webBackdrop}>
+          {children}
+        </View>
+    );
+  }
+
+  return (
+      <BlurView intensity={20} tint="dark" style={styles.modalOverlay}>
+        {children}
+      </BlurView>
+  );
+}
 
 export function InvoiceSuccessModal({ visible, onClose, onDownload, onShare, onView, canInteract }: any) {
-  return (
-      <Modal visible={visible} transparent animationType="fade">
-        <BlurView intensity={20} tint="dark" style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Close Button */}
-            <Pressable style={styles.closeBtn} onPress={onClose}>
-              <X size={20} color="#94a3b8" />
-            </Pressable>
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
 
-            {/* Success Icon with Glow */}
-            <View style={styles.iconContainer}>
-              <View style={styles.iconGlow} />
-              <CheckCircle2 size={50} color="#4ade80" strokeWidth={2.5} />
-            </View>
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
 
-            <Text style={styles.modalTitle}>Invoice Created!</Text>
-            <Text style={styles.modalSubtext}>
-              The voice recording has been successfully converted into a digital invoice.
-            </Text>
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [visible]);
 
-            {/* Main Action */}
-            <Pressable
-                style={[styles.primaryBtn, !canInteract && styles.disabledBtn]}
-                onPress={onView}
-                disabled={!canInteract}
-            >
-              <Eye size={20} color="#fff" />
-              <Text style={styles.primaryBtnText}>Preview Invoice</Text>
-            </Pressable>
+  const Content = (
+      <BlurWrapper>
+        <View style={styles.modalContent}>
+          <Pressable style={styles.closeBtn} onPress={onClose}>
+            <X size={20} color="#94a3b8" />
+          </Pressable>
 
-            {/* Secondary Actions */}
-            <View style={styles.secondaryActions}>
-              <Pressable style={styles.iconBtn} onPress={onDownload} disabled={!canInteract}>
-                <Download size={20} color="#60a5fa" />
-                <Text style={styles.iconBtnLabel}>Save</Text>
-              </Pressable>
-
-              <View style={styles.modalDivider} />
-
-              <Pressable style={styles.iconBtn} onPress={onShare} disabled={!canInteract}>
-                <Share2 size={20} color="#4ade80" />
-                <Text style={styles.iconBtnLabel}>Share</Text>
-              </Pressable>
-            </View>
+          <View style={styles.iconContainer}>
+            <View style={styles.iconGlow} />
+            <CheckCircle2 size={50} color="#4ade80" strokeWidth={2.5} />
           </View>
-        </BlurView>
-      </Modal>
+
+          <Text style={styles.modalTitle}>Invoice Created!</Text>
+          <Text style={styles.modalSubtext}>
+            The voice recording has been successfully converted into a digital invoice.
+          </Text>
+
+          <Pressable
+              style={[styles.primaryBtn, !canInteract && styles.disabledBtn]}
+              onPress={onView}
+              disabled={!canInteract}
+          >
+            <Eye size={20} color="#fff" />
+            <Text style={styles.primaryBtnText}>Preview Invoice</Text>
+          </Pressable>
+
+          <View style={styles.secondaryActions}>
+            <Pressable style={styles.iconBtn} onPress={onDownload} disabled={!canInteract}>
+              <Download size={20} color="#60a5fa" />
+              <Text style={styles.iconBtnLabel}>Save</Text>
+            </Pressable>
+
+            <View style={styles.modalDivider} />
+
+            <Pressable style={styles.iconBtn} onPress={onShare} disabled={!canInteract}>
+              <Share2 size={20} color="#4ade80" />
+              <Text style={styles.iconBtnLabel}>Share</Text>
+            </Pressable>
+          </View>
+        </View>
+      </BlurWrapper>
   );
+
+  return Platform.OS === 'web'
+      ? (visible ? <View style={styles.webOverlay}>{Content}</View> : null)
+      : (
+          <Modal visible={visible} transparent animationType="fade">
+            {Content}
+          </Modal>
+      );
 }
 
 const styles = StyleSheet.create({
@@ -150,6 +180,19 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: '#334155',
     marginVertical: 8,
+  },
+  webOverlay: {
+    position: 'static',
+    inset: 0,
+    zIndex: 1000,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  webBackdrop: {
+    backgroundColor: 'rgba(15, 23, 42, 0.85)', // Slate-900-ish
+    padding: 24,
+    borderRadius: 28,
   },
   disabledBtn: {
     opacity: 0.5,

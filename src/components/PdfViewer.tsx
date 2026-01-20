@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, StyleSheet, View, Text, Pressable, ActivityIndicator } from "react-native";
+import {Modal, StyleSheet, View, Text, Pressable, ActivityIndicator, Platform} from "react-native";
 import { X } from "lucide-react-native";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,63 +40,61 @@ export function PdfViewer({ visible, pdfBase64, invoiceNumber, onClose, isLoadin
     `;
   };
 
-  return (
-      <Modal
-          visible={visible}
-          animationType="slide"
-          onRequestClose={onClose}
-          statusBarTranslucent={true} // Allows content to flow under status bar
-          presentationStyle="fullScreen" // This helps iOS recognize the layout bounds immediately
-      >
-        <View style={styles.container}>
-
-          <View
-              style={[
-                styles.headerSafeBackground,
-                { paddingTop: insets.top, zIndex: 10 },
-              ]}
-          >
-            <View style={styles.headerContent}>
-              <Text style={styles.title}>Invoice {invoiceNumber}</Text>
-              <Pressable onPress={onClose} style={styles.closeButton} hitSlop={10}>
-                <X size={24} color="#f1f5f9" />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* PDF View */}
-          <View style={styles.pdfContainer}>
-            {isLoading && (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#60a5fa" />
-                  <Text style={styles.loadingText}>Loading PDF...</Text>
-                </View>
-            )}
-
-            {error && (
-                <View style={styles.errorContainer}>
-                  <Text style={styles.errorText}>{error}</Text>
-                  <Pressable onPress={onClose} style={styles.errorButton}>
-                    <Text style={styles.errorButtonText}>Close</Text>
-                  </Pressable>
-                </View>
-            )}
-
-            {!isLoading && !error && pdfBase64 && (
-                <WebView
-                    source={{ html: getPdfHtml() }}
-                    style={styles.pdf}
-                    originWhitelist={['*']}
-                    onError={(syntheticEvent) => {
-                      const { nativeEvent } = syntheticEvent;
-                      console.error("WebView Error:", nativeEvent);
-                    }}
-                />
-            )}
+  const Content = (
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={[styles.headerSafeBackground, Platform.OS === 'web' && { paddingTop: 16 }]}>
+          <View style={styles.headerContent}>
+            <Text style={styles.title}>Invoice {invoiceNumber}</Text>
+            <Pressable onPress={onClose} style={styles.closeButton} hitSlop={10}>
+              <X size={24} color="#f1f5f9" />
+            </Pressable>
           </View>
         </View>
-      </Modal>
+
+        {/* PDF */}
+        <View style={styles.pdfContainer}>
+          {isLoading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#60a5fa" />
+                <Text style={styles.loadingText}>Loading PDF...</Text>
+              </View>
+          )}
+
+          {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+                <Pressable onPress={onClose} style={styles.errorButton}>
+                  <Text style={styles.errorButtonText}>Close</Text>
+                </Pressable>
+              </View>
+          )}
+
+          {!isLoading && !error && pdfBase64 && (
+              Platform.OS === 'web'
+                  ? <iframe
+                      src={`data:application/pdf;base64,${pdfBase64}`}
+                      style={{ flex: 1, width: '100%', height: '100%' }}
+                      title={`Invoice ${invoiceNumber}`}
+                  />
+                  : <WebView
+                      source={{ html: getPdfHtml() }}
+                      style={styles.pdf}
+                      originWhitelist={['*']}
+                      onError={({ nativeEvent }) => console.error('WebView Error:', nativeEvent)}
+                  />
+          )}
+        </View>
+      </View>
   );
+
+  return Platform.OS === 'web'
+      ? (visible ? <View style={styles.webOverlay}>{Content}</View> : null)
+      : (
+          <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent={true} presentationStyle="fullScreen">
+            {Content}
+          </Modal>
+      );
 }
 
 const styles = StyleSheet.create({
@@ -177,5 +175,14 @@ const styles = StyleSheet.create({
     color: "#f1f5f9",
     fontWeight: "600",
     fontSize: 14,
+  },
+  webOverlay: {
+    position: 'static',
+    inset: 0,
+    zIndex: 9999,
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

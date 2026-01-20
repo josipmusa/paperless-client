@@ -48,12 +48,6 @@ export const createInvoiceFromVoice = async (audioUri: string): Promise<string> 
   return response.data;
 };
 
-export const getInvoicePdfLink = async (invoiceId: string): Promise<string> => {
-  const response = await apiClient.get<string>(`/invoices/${invoiceId}/links`);
-  return response.data;
-};
-
-
 export const getInvoiceInformation = async (invoiceId: number): Promise<InvoiceData | null> => {
   try {
     const response = await apiClient.get<InvoiceData>(`/invoices/${invoiceId}`);
