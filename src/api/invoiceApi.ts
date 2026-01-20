@@ -26,25 +26,43 @@ export interface InvoicePdfPreviewResponse {
 }
 
 export const createInvoiceFromVoice = async (audioUri: string): Promise<string> => {
+  console.log('[InvoiceAPI] Creating invoice from voice, URI length:', audioUri.length);
   const formData = new FormData();
   
-  // On iOS, ensure the URI has the correct prefix
-  const fileUri = Platform.OS === 'ios' && !audioUri.startsWith('file://') 
-    ? `file://${audioUri}` 
-    : audioUri;
+  if (Platform.OS === 'web' && audioUri.startsWith('data:')) {
+    // Web: Convert data URL to blob
+    console.log('[InvoiceAPI] Converting data URL to blob...');
+    const response = await fetch(audioUri);
+    const blob = await response.blob();
+    
+    console.log('[InvoiceAPI] Blob created, type:', blob.type, 'size:', blob.size);
+    
+    // Determine the file extension from the MIME type
+    const mimeType = blob.type;
+    const extension = mimeType.includes('webm') ? 'webm' : 'ogg';
+    
+    formData.append('file', blob, `recording.${extension}`);
+  } else {
+    // Mobile: Use file URI
+    const fileUri = Platform.OS === 'ios' && !audioUri.startsWith('file://') 
+      ? `file://${audioUri}` 
+      : audioUri;
 
-  formData.append('file', {
-    uri: fileUri,
-    type: 'audio/m4a',
-    name: 'recording.m4a',
-  } as any);
+    formData.append('file', {
+      uri: fileUri,
+      type: 'audio/m4a',
+      name: 'recording.m4a',
+    } as any);
+  }
 
+  console.log('[InvoiceAPI] Posting to /invoices...');
   const response = await apiClient.post<string>('/invoices', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   });
 
+  console.log('[InvoiceAPI] Response received, jobId:', response.data);
   return response.data;
 };
 

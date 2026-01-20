@@ -44,23 +44,51 @@ export function useWebAudioRecorder() {
     }
   }, []);
 
-  const stopRecording = useCallback(() => {
-    if (Platform.OS !== 'web' || !mediaRecorderRef.current) return;
+  const stopRecording = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      if (Platform.OS !== 'web' || !mediaRecorderRef.current) {
+        resolve();
+        return;
+      }
 
-    if (mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
+      if (mediaRecorderRef.current.state === 'inactive') {
+        resolve();
+        return;
+      }
+
+      // Set up listener for when stopping is complete
+      const currentRecorder = mediaRecorderRef.current;
+      const originalOnStop = currentRecorder.onstop;
+      
+      currentRecorder.onstop = (event) => {
+        console.log('[WebAudioRecorder] Recording stopped, audio chunks:', audioChunksRef.current.length);
+        if (originalOnStop) {
+          originalOnStop.call(currentRecorder, event);
+        }
+        setIsRecording(false);
+        // Small delay to ensure blob is set
+        setTimeout(() => {
+          console.log('[WebAudioRecorder] Stop complete');
+          resolve();
+        }, 100);
+      };
+
+      console.log('[WebAudioRecorder] Stopping recording...');
+      currentRecorder.stop();
+    });
   }, []);
 
   const getRecordingUri = useCallback(async (): Promise<string | null> => {
+    console.log('[WebAudioRecorder] Getting recording URI, blob exists:', !!audioBlob);
     if (!audioBlob) return null;
 
     // Convert blob to base64 data URL
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        resolve(reader.result as string);
+        const result = reader.result as string;
+        console.log('[WebAudioRecorder] URI created, length:', result.length);
+        resolve(result);
       };
       reader.readAsDataURL(audioBlob);
     });

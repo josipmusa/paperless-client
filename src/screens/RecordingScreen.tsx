@@ -285,17 +285,24 @@ export default function VoiceToInvoiceScreen() {
     recordingStarted.current = false;
     setIsRecording(false);
 
+    console.log('[RecordingScreen] Stopping recording, duration:', duration);
+
     haptics.stop();
 
     try {
       if (Platform.OS === 'web') {
-        webRecorder.stopRecording();
+        console.log('[RecordingScreen] Calling webRecorder.stopRecording...');
+        await webRecorder.stopRecording();
+        console.log('[RecordingScreen] webRecorder.stopRecording completed');
       } else {
         await recorder!.stop();
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+    }
 
     if (duration < 500 || cancelled) {
+      console.log('[RecordingScreen] Recording too short or cancelled');
       haptics.cancel();
       if (Platform.OS === 'web') {
         webRecorder.clearRecording();
@@ -325,23 +332,42 @@ export default function VoiceToInvoiceScreen() {
     let uri: string | null = null;
     
     if (Platform.OS === 'web') {
+      console.log('[RecordingScreen] Getting recording URI...');
       uri = await webRecorder.getRecordingUri();
+      console.log('[RecordingScreen] Got URI:', uri ? `${uri.substring(0, 50)}...` : 'null');
+      if (!uri) {
+        Toast.show('Failed to process recording', {
+          duration: Toast.durations.LONG,
+          position: Toast.positions.BOTTOM,
+          shadow: true,
+          animation: true,
+          backgroundColor: '#ef4444',
+          textColor: '#ffffff',
+        });
+        return;
+      }
       webRecorder.clearRecording();
     } else {
       uri = recorder!.uri;
     }
     
-    if (!uri) return;
+    if (!uri) {
+      console.log('[RecordingScreen] No URI available');
+      return;
+    }
 
+    console.log('[RecordingScreen] Setting processing state and calling API...');
     setIsProcessing(true);
 
     try {
       const jobId = await createInvoiceFromVoice(uri);
+      console.log('[RecordingScreen] Invoice created, jobId:', jobId);
       setInvoices((prev) => [
         { jobId, customerName: "Processing...", status: "PENDING" },
         ...prev.slice(0, 2),
       ]);
     } catch (e) {
+      console.error('Error creating invoice:', e);
       await forceStopRecording();
       setIsProcessing(false);
       Toast.show('Failed to process recording', {
@@ -419,8 +445,10 @@ export default function VoiceToInvoiceScreen() {
 
   const completedInvoice = invoices.find(inv => inv.invoiceId === completedInvoiceId);
 
+  const SafeView = Platform.OS === 'web' ? View : SafeAreaView;
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeView style={styles.container} {...(Platform.OS !== 'web' && { edges: ['top'] })}>
 
       {/* HEADER */}
       <View style={styles.header}>
@@ -518,7 +546,7 @@ export default function VoiceToInvoiceScreen() {
         isLoading={pdfLoading}
         error={pdfError}
       />
-    </SafeAreaView>
+    </SafeView>
   );
 }
 
