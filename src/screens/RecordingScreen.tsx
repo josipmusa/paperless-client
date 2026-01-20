@@ -445,10 +445,11 @@ export default function VoiceToInvoiceScreen() {
 
   const completedInvoice = invoices.find(inv => inv.invoiceId === completedInvoiceId);
 
-  const SafeView = Platform.OS === 'web' ? View : SafeAreaView;
+  const Container = Platform.OS === 'web' ? View : SafeAreaView;
+  const containerProps = Platform.OS === 'web' ? {} : { edges: ['top'] as const };
 
   return (
-    <SafeView style={styles.container} {...(Platform.OS !== 'web' && { edges: ['top'] })}>
+    <Container style={styles.container} {...containerProps}>
 
       {/* HEADER */}
       <View style={styles.header}>
@@ -546,7 +547,7 @@ export default function VoiceToInvoiceScreen() {
         isLoading={pdfLoading}
         error={pdfError}
       />
-    </SafeView>
+    </Container>
   );
 }
 

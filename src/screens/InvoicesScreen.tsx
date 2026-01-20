@@ -8,6 +8,7 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, ChevronRight, FileText, Filter } from 'lucide-react-native';
@@ -187,21 +188,24 @@ export default function InvoicesScreen({ navigation }: Props) {
     </TouchableOpacity>
   );
 
+  const Container = Platform.OS === 'web' ? View : SafeAreaView;
+  const containerProps = Platform.OS === 'web' ? {} : { edges: ['top'] as const };
+
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <Container style={styles.container} {...containerProps}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Invoices</Text>
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3b82f6" />
         </View>
-      </SafeAreaView>
+      </Container>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <Container style={styles.container} {...containerProps}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Invoices</Text>
       </View>
@@ -275,7 +279,7 @@ export default function InvoicesScreen({ navigation }: Props) {
           </Text>
         </View>
       )}
-    </SafeAreaView>
+    </Container>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Download, Share2, FileText } from 'lucide-react-native';
@@ -57,8 +58,11 @@ export default function InvoiceDetailScreen({ navigation, route }: Props) {
     setIsLoading(false);
   };
 
+  const Container = Platform.OS === 'web' ? View : SafeAreaView;
+  const containerProps = Platform.OS === 'web' ? {} : { edges: ['top'] as const };
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <Container style={styles.container} {...containerProps}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -173,7 +177,7 @@ export default function InvoiceDetailScreen({ navigation, route }: Props) {
         isLoading={pdfLoading}
         error={pdfError}
       />
-    </SafeAreaView>
+    </Container>
   );
 }
 
