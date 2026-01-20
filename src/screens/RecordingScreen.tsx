@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, FlatList} from "react-native";
+import { View, Text, StyleSheet, FlatList, Platform} from "react-native";
 import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from 'react-native-root-toast';
@@ -40,16 +40,25 @@ export default function VoiceToInvoiceScreen() {
   const recordingStarted = useRef(false);
 
   const haptics = {
-    start: () =>
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium),
+    start: () => {
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+    },
 
-    stop: () =>
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light),
+    stop: () => {
+        if (Platform.OS !== 'web') {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+    },
 
-    cancel: () =>
-        Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Warning
-        ),
+    cancel: () => {
+        if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Warning
+            );
+        }
+    },
   };
   
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -180,6 +189,18 @@ export default function VoiceToInvoiceScreen() {
   };
 
   const startRecording = async () => {
+    if (Platform.OS === 'web') {
+      Toast.show('Audio recording is only available on mobile devices', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#f59e0b',
+        textColor: '#ffffff',
+      });
+      return;
+    }
+    
     if (isProcessing || isStartingRef.current || isRecording) return;
 
     isStartingRef.current = true;

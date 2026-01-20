@@ -7,8 +7,9 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
   Modal,
+  Platform,
+  Alert,
 } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -109,14 +110,20 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: signOut },
-      ]
-    );
+    if (Platform.OS === 'web') {
+      if (confirm('Are you sure you want to logout?')) {
+        signOut();
+      }
+    } else {
+      Alert.alert(
+        'Logout',
+        'Are you sure you want to logout?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Logout', style: 'destructive', onPress: signOut },
+        ]
+      );
+    }
   };
 
   const handleDeleteAccount = async () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated, PanResponder } from "react-native";
+import { View, Text, StyleSheet, Animated, PanResponder, Platform } from "react-native";
 import { Mic, Loader2, ChevronUp, ChevronsLeft, ChevronsRight } from "lucide-react-native";
 
 interface RecordingButtonProps {
@@ -97,51 +97,53 @@ export function RecordingButton({
     }
   }, [isRecording]);
 
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderGrant: async (_, gesture) => {
-      startY.current = gesture.y0;
-      startX.current = gesture.x0;
-      isCancelling.current = false;
-      await onStartRecording();
-    },
-    onPanResponderMove: (_, gesture) => {
-      const horizontalDistance = Math.abs(gesture.moveX - startX.current);
-      const verticalDistance = startY.current - gesture.moveY;
-      
-      if (verticalDistance > 80 || horizontalDistance > 80) {
-        if (!isCancelling.current) {
-          isCancelling.current = true;
-          Animated.timing(cancelIndicatorOpacity, {
-            toValue: 1,
-            duration: 200,
-            useNativeDriver: true,
-          }).start();
-        }
-      } else {
-        if (isCancelling.current) {
+  const panResponder = Platform.OS === 'web' 
+    ? { panHandlers: {} }
+    : PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: async (_, gesture) => {
+          startY.current = gesture.y0;
+          startX.current = gesture.x0;
           isCancelling.current = false;
+          await onStartRecording();
+        },
+        onPanResponderMove: (_, gesture) => {
+          const horizontalDistance = Math.abs(gesture.moveX - startX.current);
+          const verticalDistance = startY.current - gesture.moveY;
+          
+          if (verticalDistance > 80 || horizontalDistance > 80) {
+            if (!isCancelling.current) {
+              isCancelling.current = true;
+              Animated.timing(cancelIndicatorOpacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+              }).start();
+            }
+          } else {
+            if (isCancelling.current) {
+              isCancelling.current = false;
+              Animated.timing(cancelIndicatorOpacity, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+              }).start();
+            }
+          }
+        },
+        onPanResponderRelease: () => {
+          const wasCancelling = isCancelling.current;
+          onStopRecording(wasCancelling);
+          isCancelling.current = false;
+          
+          // Reset cancel indicator
           Animated.timing(cancelIndicatorOpacity, {
             toValue: 0,
             duration: 200,
             useNativeDriver: true,
           }).start();
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      const wasCancelling = isCancelling.current;
-      onStopRecording(wasCancelling);
-      isCancelling.current = false;
-      
-      // Reset cancel indicator
-      Animated.timing(cancelIndicatorOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    },
-  });
+        },
+      });
 
   return (
     <View style={styles.container}>

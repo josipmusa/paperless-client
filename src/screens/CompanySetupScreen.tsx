@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
+import Toast from 'react-native-root-toast';
 import { useForm, Controller } from 'react-hook-form';
 import { useAuthStore } from '../store/authStore';
 import { createCompany, CompanyData } from '../api/companyApi';
@@ -43,9 +43,23 @@ export default function CompanySetupScreen({ navigation }: Props) {
     try {
       await createCompany(data);
       setCompanySetupComplete(true);
-      Alert.alert('Success', 'Company profile created successfully!');
+      Toast.show('Company profile created successfully!', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#16a34a',
+        textColor: '#ffffff',
+      });
     } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to create company profile');
+      Toast.show(error.response?.data?.message || 'Failed to create company profile', {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     } finally {
       setIsLoading(false);
     }

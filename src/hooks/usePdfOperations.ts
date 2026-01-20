@@ -2,6 +2,7 @@ import {useCallback, useState} from "react";
 import {File, Paths} from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import Toast from "react-native-root-toast";
+import {Platform} from "react-native";
 import {getInvoicePdfPreview} from "../api/invoiceApi";
 
 export function usePdfOperations() {
@@ -14,6 +15,14 @@ export function usePdfOperations() {
 
     const downloadInvoicePdf = useCallback(async (invoiceId: number, invoiceNumber: string): Promise<string> => {
         const fileName = `Invoice_${invoiceNumber}.pdf`;
+
+        if (Platform.OS === 'web') {
+            const base64Data = await getInvoicePdfPreview(invoiceId);
+            const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+            const blob = new Blob([binaryData], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            return url;
+        }
 
         const file = new File(Paths.document, fileName);
         if (file.exists) {
@@ -40,16 +49,41 @@ export function usePdfOperations() {
     const downloadPdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
         try {
             setIsDownloading(true);
-            await downloadInvoicePdf(invoiceId, invoiceNumber);
+            
+            if (Platform.OS === 'web') {
+                const base64Data = await getInvoicePdfPreview(invoiceId);
+                const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                const blob = new Blob([binaryData], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `Invoice_${invoiceNumber}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                Toast.show(`Invoice ${invoiceNumber} downloaded`, {
+                    duration: Toast.durations.LONG,
+                    position: Toast.positions.BOTTOM,
+                    shadow: true,
+                    animation: true,
+                    backgroundColor: "#16a34a",
+                    textColor: "#ffffff",
+                });
+            } else {
+                await downloadInvoicePdf(invoiceId, invoiceNumber);
 
-            Toast.show(`Invoice ${invoiceNumber} is available offline`, {
-                duration: Toast.durations.LONG,
-                position: Toast.positions.BOTTOM,
-                shadow: true,
-                animation: true,
-                backgroundColor: "#16a34a",
-                textColor: "#ffffff",
-            });
+                Toast.show(`Invoice ${invoiceNumber} is available offline`, {
+                    duration: Toast.durations.LONG,
+                    position: Toast.positions.BOTTOM,
+                    shadow: true,
+                    animation: true,
+                    backgroundColor: "#16a34a",
+                    textColor: "#ffffff",
+                });
+            }
         } catch (error) {
             console.error("Failed to download PDF:", error);
             Toast.show("Failed to download PDF. Please try again.", {
@@ -67,6 +101,30 @@ export function usePdfOperations() {
 
     const sharePdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
         try {
+            if (Platform.OS === 'web') {
+                if (typeof navigator !== 'undefined' && 'share' in navigator) {
+                    const base64Data = await getInvoicePdfPreview(invoiceId);
+                    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                    const blob = new Blob([binaryData], { type: 'application/pdf' });
+                    const file = new (window as any).File([blob], `Invoice_${invoiceNumber}.pdf`, { type: 'application/pdf' });
+                    
+                    await (navigator as any).share({
+                        files: [file],
+                        title: `Invoice ${invoiceNumber}`,
+                    });
+                } else {
+                    Toast.show("Sharing is not supported in this browser. Use the download button instead.", {
+                        duration: Toast.durations.LONG,
+                        position: Toast.positions.BOTTOM,
+                        shadow: true,
+                        animation: true,
+                        backgroundColor: "#f59e0b",
+                        textColor: "#ffffff",
+                    });
+                }
+                return;
+            }
+            
             const available = await Sharing.isAvailableAsync();
             if (!available) {
                 Toast.show("Your device does not support sharing", {

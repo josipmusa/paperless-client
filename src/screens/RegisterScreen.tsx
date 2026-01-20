@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
+import Toast from 'react-native-root-toast';
 import { useForm, Controller } from 'react-hook-form';
 import { useAuthStore } from '../store/authStore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -44,7 +44,14 @@ export default function RegisterScreen({ navigation }: Props) {
     setIsLoading(false);
 
     if (error) {
-      Alert.alert('Registration Failed', error.message);
+      Toast.show(`Registration Failed: ${error.message}`, {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     } else {
       navigation.navigate('CompanySetup');
     }

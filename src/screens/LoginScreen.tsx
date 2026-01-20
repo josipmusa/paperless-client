@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Toast from 'react-native-root-toast';
 import { useForm, Controller } from 'react-hook-form';
 import { useAuthStore } from '../store/authStore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -40,7 +40,14 @@ export default function LoginScreen({ navigation }: Props) {
     setIsLoading(false);
 
     if (error) {
-      Alert.alert('Login Failed', error.message);
+      Toast.show(`Login Failed: ${error.message}`, {
+        duration: Toast.durations.LONG,
+        position: Toast.positions.BOTTOM,
+        shadow: true,
+        animation: true,
+        backgroundColor: '#ef4444',
+        textColor: '#ffffff',
+      });
     }
   };
 
