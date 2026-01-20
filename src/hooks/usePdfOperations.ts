@@ -47,10 +47,9 @@ export function usePdfOperations() {
     }, []);
 
     const downloadPdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
-        try {
-            setIsDownloading(true);
-            
-            if (Platform.OS === 'web') {
+        if (Platform.OS === 'web') {
+            // For web, handle download synchronously without loading state
+            try {
                 const base64Data = await getInvoicePdfPreview(invoiceId);
                 const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
                 const blob = new Blob([binaryData], { type: 'application/pdf' });
@@ -59,31 +58,54 @@ export function usePdfOperations() {
                 const link = document.createElement('a');
                 link.href = url;
                 link.download = `Invoice_${invoiceNumber}.pdf`;
+                link.style.display = 'none';
                 document.body.appendChild(link);
                 link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
                 
-                Toast.show(`Invoice ${invoiceNumber} downloaded`, {
-                    duration: Toast.durations.LONG,
+                // Clean up immediately
+                setTimeout(() => {
+                    if (link.parentNode) {
+                        document.body.removeChild(link);
+                    }
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                Toast.show(`Invoice ${invoiceNumber} download started`, {
+                    duration: Toast.durations.SHORT,
                     position: Toast.positions.BOTTOM,
                     shadow: true,
                     animation: true,
                     backgroundColor: "#16a34a",
                     textColor: "#ffffff",
                 });
-            } else {
-                await downloadInvoicePdf(invoiceId, invoiceNumber);
-
-                Toast.show(`Invoice ${invoiceNumber} is available offline`, {
+            } catch (error) {
+                console.error("Failed to download PDF:", error);
+                Toast.show("Failed to download PDF. Please try again.", {
                     duration: Toast.durations.LONG,
                     position: Toast.positions.BOTTOM,
                     shadow: true,
                     animation: true,
-                    backgroundColor: "#16a34a",
+                    backgroundColor: "#ef4444",
                     textColor: "#ffffff",
                 });
             }
+            return;
+        }
+        
+        // Mobile path with loading state
+        try {
+            setIsDownloading(true);
+            
+            await downloadInvoicePdf(invoiceId, invoiceNumber);
+
+            Toast.show(`Invoice ${invoiceNumber} is available offline`, {
+                duration: Toast.durations.LONG,
+                position: Toast.positions.BOTTOM,
+                shadow: true,
+                animation: true,
+                backgroundColor: "#16a34a",
+                textColor: "#ffffff",
+            });
         } catch (error) {
             console.error("Failed to download PDF:", error);
             Toast.show("Failed to download PDF. Please try again.", {
@@ -100,8 +122,9 @@ export function usePdfOperations() {
     }, [downloadInvoicePdf]);
 
     const sharePdf = useCallback(async (invoiceId: number, invoiceNumber: string) => {
-        try {
-            if (Platform.OS === 'web') {
+        if (Platform.OS === 'web') {
+            // Web path - no loading state needed
+            try {
                 if (typeof navigator !== 'undefined' && 'share' in navigator) {
                     const base64Data = await getInvoicePdfPreview(invoiceId);
                     const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
@@ -122,8 +145,26 @@ export function usePdfOperations() {
                         textColor: "#ffffff",
                     });
                 }
-                return;
+            } catch (error) {
+                // User cancelled share dialog - don't show error
+                if ((error as any).name === 'AbortError') {
+                    return;
+                }
+                console.error(error);
+                Toast.show("Could not share the invoice", {
+                    duration: Toast.durations.LONG,
+                    position: Toast.positions.BOTTOM,
+                    shadow: true,
+                    animation: true,
+                    backgroundColor: "#ef4444",
+                    textColor: "#ffffff",
+                });
             }
+            return;
+        }
+        
+        // Mobile path
+        try {
             
             const available = await Sharing.isAvailableAsync();
             if (!available) {
